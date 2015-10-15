@@ -1,7 +1,7 @@
+numpy==1.9.2
 Lasagne==0.1
 Theano==0.7.0
 scipy==0.16.0
-numpy==1.9.2
 matplotlib==1.4.3
 ipython==4.0.0
 notebook==4.0.4
