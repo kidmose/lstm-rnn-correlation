@@ -1,3 +1,4 @@
+from __future__ import print_function
 __author__ = 'casperkaae'
 import numpy as np
 
@@ -24,8 +25,8 @@ def print_valid_characters():
     l = ''
     for i,c in enumerate(valid_characters):
         l += "\'%s\'=%i,\t" % (c,i)
-    print "Number of valid characters:", len(valid_characters)
-    print l
+    print("Number of valid characters:", len(valid_characters))
+    print(l)
 
 ninput_chars = len(valid_characters)
 def get_batch(batch_size=100, min_digits = 3, max_digits=3):
@@ -46,12 +47,12 @@ def get_batch(batch_size=100, min_digits = 3, max_digits=3):
         inp_str = text_target[:-1]
 
         #generate the targets as a list of intergers
-        int_target = map(lambda c: valid_characters.index(c), text_target)
+        int_target = list(map(lambda c: valid_characters.index(c), text_target))
 
         #generate the text input
         text_input = " ".join(map(lambda k: target_to_text[k], inp_str))
         #generate the inputs as a list of intergers
-        int_input = map(lambda c: valid_characters.index(c), text_input)
+        int_input = list(map(lambda c: valid_characters.index(c), text_input))
 
         text_inputs.append(text_input)
         int_inputs.append(int_input)
