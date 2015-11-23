@@ -24,6 +24,30 @@ import theano.tensor as T
 
 import time
 import numpy as np
+import logging
+
+def get_logger(name):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+
+    if len(logger.handlers) == 0:
+        # Console
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(logging.Formatter())
+        logger.addHandler(ch)
+
+        # File
+        fh = logging.FileHandler(__name__+'.log')
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            fmt='%(asctime)s - %(levelname)s - %(message)s',
+        ))
+        logger.addHandler(fh)
+
+    return logger
+
+logger = get_logger('lstm_rnn_tied_weights')
 
 class CosineSimilarityLayer(layers.MergeLayer):
     """
@@ -74,15 +98,15 @@ def clone(src_net, dst_net, mask_input):
     InputLayers are ignored.
     Recurrent layers (LSTMLayer) are passed mask_input.
     """
-    print("Net to be cloned:")
+    logger.info("Net to be cloned:")
     for l in layers.get_all_layers(src_net):
-        print(" - {} ({}):".format(l.name, l))
+        logger.info(" - {} ({}):".format(l.name, l))
 
-    print("Starting to clone..")
+    logger.info("Starting to clone..")
     for l in layers.get_all_layers(src_net):
-        print("src_net[...]: {} ({}):".format(l.name, l))
+        logger.info("src_net[...]: {} ({}):".format(l.name, l))
         if type(l) == layers.InputLayer:
-            print(' - skipping')
+            logger.info(' - skipping')
             continue
         if type(l) == layers.DenseLayer:
             dst_net = layers.DenseLayer(
@@ -157,11 +181,11 @@ def clone(src_net, dst_net, mask_input):
         else:
             raise ValueError("Unhandled layer: {}".format(l))
         new_layer = layers.get_all_layers(dst_net)[-1]
-        print('dst_net[...]: {} ({})'.format(new_layer, new_layer.name))
+        logger.info('dst_net[...]: {} ({})'.format(new_layer, new_layer.name))
 
-    print("Result of cloning:")
+    logger.info("Result of cloning:")
     for l in layers.get_all_layers(dst_net):
-        print(" - {} ({}):".format(l.name, l))
+        logger.info(" - {} ({}):".format(l.name, l))
 
     return dst_net
 
@@ -178,13 +202,13 @@ def load_data(file_names):
     incident: list an entry for each row in alert_matrix, identifying source file for the row.
     """
     start_time = time.time()
-    print("Loading {} files:".format(len(file_names)))
+    logger.info("Loading {} files:".format(len(file_names)))
 
     alerts = list()
     incidents = list()
     for i, fn in enumerate(file_names):
         i += 1
-        print(' - {}/{} {}'.format(i, len(file_names), fn))
+        logger.info(' - {}/{} {}'.format(i, len(file_names), fn))
         with open(fn, 'r') as f:
             for l in f.readlines():
                 alerts.append(l)
@@ -198,7 +222,7 @@ def load_data(file_names):
         for j, c in enumerate(alert):
             alert_matrix[i,j] = ord(c)
 
-    print("Completed loading {} alerts in {}s".format(len(alert_matrix), time.time()-start_time))
+    logger.info("Completed loading {} alerts in {}s".format(len(alert_matrix), time.time()-start_time))
 
     return (alert_matrix, mask_matrix, incidents)
 
@@ -221,7 +245,7 @@ def split_data(
     idxs = list(np.cumsum(weights))
     idxs = [0] + idxs
 
-    print("Splitting {} samples into: ".format(len(alerts)) + str(weights))
+    logger.info("Splitting {} samples into: ".format(len(alerts)) + str(weights))
     for start, end in zip (idxs[:-1], idxs[1:]):
         yield alerts[start:end], masks[start:end], incidents[start:end]
 
@@ -243,7 +267,7 @@ def cross_join(
     np.random.shuffle(j_idxs)
 
     if max_alerts is not None:
-        print("Capping to {} alert pairs.".format(max_alerts))
+        logger.info("Capping to {} alert pairs.".format(max_alerts))
         i_idxs = i_idxs[:max_alerts]
         j_idxs = j_idxs[:max_alerts]
 

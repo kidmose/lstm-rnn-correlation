@@ -50,7 +50,7 @@ class Test(unittest.TestCase):
     def test_binary_2d(self):
         in1 = [[0, 1], [1, 0], [0, -1]]
         in2 = [[0, 1], [0, 1], [0, 1]]
-        exp = [ 1.,  0., -1.]
+        exp = np.array([ 1.,  0., -1.])
 
         res = self.fn(in1, in2)
         self.assertEqual(
