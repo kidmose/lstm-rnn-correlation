@@ -193,14 +193,9 @@ def clone(src_net, dst_net, mask_input):
 # Data preparation / loading functions
 def load_data(file_names):
     """
-    Loads alerts from the files listed in file_names and returns them along with char masks and incident(file) id.
+    Loads alerts from the files listed in file_names and returns them along with incident id.
 
     files_names: full or relative path to files that needs to be loaded.
-
-    returns: (alert_matrix, mask_matrix, incidents)
-    alert_matrix: numpy matrix of size 'alert count' by 'max length among alerts' with ascii(int8) encoded strings.
-    mask_matrix: Dimensions like alert_matrix. Encoding length of alerts with one of {0,1} pr. character.
-    incident: list an entry for each row in alert_matrix, identifying source file for the row.
     """
     start_time = time.time()
     logger.info("Loading {} files:".format(len(file_names)))
@@ -215,6 +210,28 @@ def load_data(file_names):
                 alerts.append(l)
                 incidents.append(i)
 
+    logger.info("Completed loading {} alerts in {}s".format(
+        len(alerts),
+        time.time()-start_time),
+    )
+    return (alerts, incidents)
+
+
+def encode(alerts, incidents):
+    """
+    Encodes alerts as one hot encoding for ascii chars and calculates masks.
+
+    alerts: list of strings, each containing an alert.
+    incidents: list of incidents IDs for each alert.
+
+    returns: (alert_matrix, mask_matrix, incidents)
+    alert_matrix: numpy matrix of size 'alert count' by 'max length among alerts' with ascii(int8) encoded strings.
+    mask_matrix: Dimensions like alert_matrix. Encoding length of alerts with one of {0,1} pr. character.
+    incident: list an entry for each row in alert_matrix, identifying source file for the row.
+    """
+    assert len(alerts) == len(incidents), "Inputs must have same length."
+    incidents = np.array(incidents)
+
     lens = list(map(len, alerts))
     alert_matrix = np.zeros((len(alerts),max(lens)), dtype='int8')
     mask_matrix = np.zeros_like(alert_matrix)
@@ -222,8 +239,6 @@ def load_data(file_names):
         mask_matrix[i, :lens[i]] = 1
         for j, c in enumerate(alert):
             alert_matrix[i,j] = ord(c)
-
-    logger.info("Completed loading {} alerts in {}s".format(len(alert_matrix), time.time()-start_time))
 
     return (alert_matrix, mask_matrix, incidents)
 
@@ -273,7 +288,7 @@ def cross_join(
         i_idxs = i_idxs[:limit]
         j_idxs = j_idxs[:limit]
 
-    logger.debug('Ready to yield {} pairs of alerts'.format(len(alerts)))
+    logger.debug('Ready to yield {} pairs of alerts'.format(len(i_idxs)*len(j_idxs)))
     for i in i_idxs:
         for j in j_idxs:
             yield (
