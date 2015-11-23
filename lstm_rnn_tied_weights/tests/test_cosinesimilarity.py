@@ -58,6 +58,7 @@ class Test(unittest.TestCase):
             len(res.shape),
             msg="Dimension mismatch"
         )
+        self.assert_array_equal(res.shape, exp.shape)
         self.assert_array_equal(exp, res, err_msg="Invalid result")
 
     def test_int_and_float_2d(self):

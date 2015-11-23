@@ -22,6 +22,8 @@ Module for LSTM RNN with tied weights.
 from lasagne import layers
 import theano.tensor as T
 
+import time
+import numpy as np
 
 class CosineSimilarityLayer(layers.MergeLayer):
     """
@@ -162,3 +164,128 @@ def clone(src_net, dst_net, mask_input):
         print(" - {} ({}):".format(l.name, l))
 
     return dst_net
+
+# Data preparation / loading functions
+def load_data(file_names):
+    """
+    Loads alerts from the files listed in file_names and returns them along with char masks and incident(file) id.
+
+    files_names: full or relative path to files that needs to be loaded.
+
+    returns: (alert_matrix, mask_matrix, incidents)
+    alert_matrix: numpy matrix of size 'alert count' by 'max length among alerts' with ascii(int8) encoded strings.
+    mask_matrix: Dimensions like alert_matrix. Encoding length of alerts with one of {0,1} pr. character.
+    incident: list an entry for each row in alert_matrix, identifying source file for the row.
+    """
+    start_time = time.time()
+    print("Loading {} files:".format(len(file_names)))
+
+    alerts = list()
+    incidents = list()
+    for i, fn in enumerate(file_names):
+        i += 1
+        print(' - {}/{} {}'.format(i, len(file_names), fn))
+        with open(fn, 'r') as f:
+            for l in f.readlines():
+                alerts.append(l)
+                incidents.append(i)
+
+    lens = list(map(len, alerts))
+    alert_matrix = np.zeros((len(alerts),max(lens)), dtype='int8')
+    mask_matrix = np.zeros_like(alert_matrix)
+    for i, alert in enumerate(alerts):
+        mask_matrix[i, :lens[i]] = 1
+        for j, c in enumerate(alert):
+            alert_matrix[i,j] = ord(c)
+
+    print("Completed loading {} alerts in {}s".format(len(alert_matrix), time.time()-start_time))
+
+    return (alert_matrix, mask_matrix, incidents)
+
+def split_data(
+    alerts,
+    masks,
+    incidents,
+    train_weight=60,
+    val_weight=20,
+    test_weight=20,
+):
+    """Split data into training, validation and test sets"""
+    assert len(alerts) == len(masks)
+    assert len(alerts) == len(incidents)
+    assert alerts.shape == masks.shape
+    n = len(alerts)
+
+    weights = np.array([train_weight, val_weight, test_weight])
+    weights = (weights/sum(weights)*n).astype(int)
+    idxs = list(np.cumsum(weights))
+    idxs = [0] + idxs
+
+    print("Splitting {} samples into: ".format(len(alerts)) + str(weights))
+    for start, end in zip (idxs[:-1], idxs[1:]):
+        yield alerts[start:end], masks[start:end], incidents[start:end]
+
+def cross_join(
+    cut,
+    max_alerts=None,
+):
+    """Cross join list of alerts with self and track if incident is the same."""
+    alerts, masks, incidents = cut
+    assert len(alerts) == len(masks)
+    assert len(alerts) == len(incidents)
+    assert alerts.shape == masks.shape
+
+    # Shuffle to sample across all alerts in a predictive fashion
+    np.random.seed(1131662768)
+    i_idxs = np.arange(len(alerts))
+    np.random.shuffle(i_idxs)
+    j_idxs = np.arange(len(alerts))
+    np.random.shuffle(j_idxs)
+
+    if max_alerts is not None:
+        print("Capping to {} alert pairs.".format(max_alerts))
+        i_idxs = i_idxs[:max_alerts]
+        j_idxs = j_idxs[:max_alerts]
+
+    for i in i_idxs:
+        for j in j_idxs:
+            yield (
+                alerts[i],
+                alerts[j],
+                masks[i],
+                masks[j],
+                incidents[i] == incidents[j],
+            )
+
+def iterate_minibatches(samples, batch_size):
+    # Sneek peak at first sample to learn alert length
+    sample = next(samples)
+    alert1, alert2, mask1, mask2, correlation = sample
+    inputs1 = np.empty((batch_size, len(sample[0])), dtype=alert1.dtype)
+    inputs2 = np.empty_like(inputs1)
+    masks1 = np.empty_like(inputs1)
+    masks2 = np.empty_like(inputs1)
+    targets = np.empty((batch_size), dtype=bool)
+    i = 0 # index for the arrays
+
+    # Remember to use first samples
+    inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i] = sample
+    i += 1
+
+    # Use remaining samples to build and yield batches
+    batches_produced = 0
+    samples_processed = 0
+    for sample in samples:
+        inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i] = sample
+        i += 1
+        if i == batch_size:
+            batches_produced += 1
+            samples_processed += i
+            i = 0
+            yield inputs1, inputs2, masks1, masks2, targets
+    samples_processed += i
+    assert batches_produced > 0, "{} samples is not enough to produce a batch({} samples)".format(
+        samples_processed, batch_size)
+    batches_expected = samples_processed // batch_size
+    assert batches_expected == batches_produced, "Expected {} but produced {} batches". format(
+        batches_expected, batches_produced)
