@@ -23,6 +23,7 @@ from lasagne import layers
 import theano.tensor as T
 
 import time
+import math
 import numpy as np
 import logging
 
@@ -267,10 +268,12 @@ def cross_join(
     np.random.shuffle(j_idxs)
 
     if max_alerts is not None:
-        logger.info("Capping to {} alert pairs.".format(max_alerts))
-        i_idxs = i_idxs[:max_alerts]
-        j_idxs = j_idxs[:max_alerts]
+        limit = int(math.floor(math.sqrt(max_alerts)))
+        logger.info("Capping to {} alert pairs (max_alerts={}).".format(limit**2, max_alerts))
+        i_idxs = i_idxs[:limit]
+        j_idxs = j_idxs[:limit]
 
+    logger.debug('Ready to yield {} pairs of alerts'.format(len(alerts)))
     for i in i_idxs:
         for j in j_idxs:
             yield (
@@ -306,8 +309,12 @@ def iterate_minibatches(samples, batch_size):
             batches_produced += 1
             samples_processed += i
             i = 0
+            logger.debug('Yielding batch, len={}'.format(len(inputs1)))
             yield inputs1, inputs2, masks1, masks2, targets
     samples_processed += i
+    logger.debug('samples_processed={}, batches_produced={}'.format(
+        samples_processed, batches_produced
+    ))
     assert batches_produced > 0, "{} samples is not enough to produce a batch({} samples)".format(
         samples_processed, batch_size)
     batches_expected = samples_processed // batch_size
