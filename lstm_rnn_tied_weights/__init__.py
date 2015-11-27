@@ -18,6 +18,7 @@
 """
 Module for LSTM RNN with tied weights.
 """
+from __future__ import division
 
 from lasagne import layers
 import theano.tensor as T

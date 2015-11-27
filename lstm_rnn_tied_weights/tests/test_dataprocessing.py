@@ -17,7 +17,6 @@
 # License along with lstm-rnn-correlation. If not, see
 # <http://www.gnu.org/licenses/>.
 """Tests for data processing functions. """
-from __future__ import division
 
 import unittest
 import numpy as np
