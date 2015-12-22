@@ -247,17 +247,16 @@ def split_data(
     alerts,
     masks,
     incidents,
-    train_weight=60,
-    val_weight=20,
-    test_weight=20,
+    split,
 ):
     """Split data into training, validation and test sets"""
     assert len(alerts) == len(masks)
     assert len(alerts) == len(incidents)
     assert alerts.shape == masks.shape
+    assert len(split) == 3
     n = len(alerts)
 
-    weights = np.array([train_weight, val_weight, test_weight])
+    weights = np.array(split)
     weights = (weights/sum(weights)*n).astype(int)
     idxs = list(np.cumsum(weights))
     idxs = [0] + idxs
@@ -269,6 +268,7 @@ def split_data(
 def cross_join(
     cut,
     max_alerts=None,
+    offset=0,
 ):
     """Cross join list of alerts with self and track if incident is the same."""
     alerts, masks, incidents = cut
@@ -289,9 +289,14 @@ def cross_join(
         i_idxs = i_idxs[:limit]
         j_idxs = j_idxs[:limit]
 
+    i_offset = offset // len(alerts)
+    j_offset = offset % len(alerts)
+
     logger.debug('Ready to yield {} pairs of alerts'.format(len(i_idxs)*len(j_idxs)))
     for i in i_idxs:
+        i += i_offset
         for j in j_idxs:
+            j += j_offset
             yield (
                 alerts[i],
                 alerts[j],
