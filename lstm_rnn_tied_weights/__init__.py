@@ -43,7 +43,7 @@ def get_logger(name):
         fh = logging.FileHandler(__name__+'.log')
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(logging.Formatter(
-            fmt='%(asctime)s - %(levelname)s - %(message)s',
+            fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
         ))
         logger.addHandler(fh)
 
