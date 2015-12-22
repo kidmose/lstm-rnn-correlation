@@ -52,7 +52,7 @@ class Test(unittest.TestCase):
 
     def test_split_data(self):
         a = np.zeros((10, 1), dtype=int)
-        res = list(lstm_rnn_tied_weights.split_data(a, a+1, a+2))
+        res = list(lstm_rnn_tied_weights.split_data(a, a+1, a+2, [60,20,20]))
         exp = [
             (np.array([[0]]*6), np.array([[1]]*6), np.array([[2]]*6)),
             (np.array([[0]]*2), np.array([[1]]*2), np.array([[2]]*2)),
