@@ -283,27 +283,43 @@ def cross_join(
     j_idxs = np.arange(len(alerts))
     np.random.shuffle(j_idxs)
 
-    if max_alerts is not None:
-        limit = int(math.floor(math.sqrt(max_alerts)))
-        logger.info("Capping to {} alert pairs (max_alerts={}).".format(limit**2, max_alerts))
-        i_idxs = i_idxs[:limit]
-        j_idxs = j_idxs[:limit]
-
-    i_offset = offset // len(alerts)
-    j_offset = offset % len(alerts)
-
-    logger.debug('Ready to yield {} pairs of alerts'.format(len(i_idxs)*len(j_idxs)))
-    for i in i_idxs:
-        i += i_offset
-        for j in j_idxs:
-            j += j_offset
-            yield (
+    def produce_one_pair(i, j):
+        return (
                 alerts[i],
                 alerts[j],
                 masks[i],
                 masks[j],
                 incidents[i] == incidents[j],
             )
+
+    def produce_all_pairs():
+
+        # Handle offsetting
+        i_offset = offset // len(alerts)
+        j_offset = offset % len(alerts)
+        i = i_idxs[i_offset] # find first row to be used
+        for j in j_idxs[j_offset:]: # find elementts to be used
+            yield produce_one_pair(i, j)
+
+        # remainder is straight forward
+        for i in i_idxs[i_offset+1:]:
+            for j in j_idxs:
+                yield produce_one_pair(i, j)
+
+    def limit(iterable):
+        logger.debug('Limitting to max_alerts={}'.format(max_alerts))
+        for pair, cnt in zip(iterable, range(max_alerts)):
+            yield pair
+        logger.debug('Succescully limited to {} pairs (max_alerts={})'.format(cnt, max_alerts))
+
+    pairs = produce_all_pairs()
+    if max_alerts is not None:
+        pairs = limit(pairs)
+
+    for cnt, pair in enumerate(pairs):
+        yield pair
+    logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt))
+
 
 def iterate_minibatches(samples, batch_size):
     # Sneek peak at first sample to learn alert length
