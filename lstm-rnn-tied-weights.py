@@ -310,9 +310,6 @@ if env.get('CUT_PAIR', False):
 elif env.get('CUT_INC', False):
     alerts, masks, incidents = data
     train, val, test = split_data(alerts, masks, incidents, env['SPLIT'])
-    logger.info('Breakdown of training data:\n'+break_down_data(train[2]))
-    logger.info('Breakdown of validation data:\n'+break_down_data(val[2]))
-    logger.info('Breakdown of testing data:\n'+break_down_data(test[2]))
     
     def _get_batch(batch):
         for sample in cross_join(batch, max_alerts=env['MAX_PAIRS']):
@@ -329,6 +326,19 @@ elif env.get('CUT_NO', False):
             
     get_val_batch = get_train_batch
     get_test_batch = get_train_batch
+
+list(get_train_batch())[0]
+
+a1, a2, m1, m2, cor, inc1, inc2 = range(7)
+logger.info('Breakdown of training data, correlation:\n'+
+            break_down_data([p[cor] for p in get_train_batch()])
+           )
+logger.info('Breakdown of training data, incident 1:\n'+
+            break_down_data([p[inc1] for p in get_train_batch()])
+           )
+logger.info('Breakdown of training data, incident 2:\n'+
+            break_down_data([p[inc2] for p in get_train_batch()])
+           )
 
 logger.info("Starting training...")
 for epoch in range(env['EPOCHS']):

@@ -335,14 +335,14 @@ def iterate_minibatches(samples, batch_size):
     i = 0 # index for the arrays
 
     # Remember to use first samples
-    inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i] = sample
+    inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], _, _ = sample
     i += 1
 
     # Use remaining samples to build and yield batches
     batches_produced = 0
     samples_processed = 0
     for sample in samples:
-        inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i] = sample
+        inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], _, _ = sample
         i += 1
         if i == batch_size:
             batches_produced += 1
