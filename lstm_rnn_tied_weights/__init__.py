@@ -285,12 +285,14 @@ def cross_join(
 
     def produce_one_pair(i, j):
         return (
-                alerts[i],
-                alerts[j],
-                masks[i],
-                masks[j],
-                incidents[i] == incidents[j],
-            )
+            alerts[i],
+            alerts[j],
+            masks[i],
+            masks[j],
+            incidents[i] == incidents[j],
+            incidents[i],
+            incidents[j],
+        )
 
     def produce_all_pairs():
 
@@ -324,7 +326,7 @@ def cross_join(
 def iterate_minibatches(samples, batch_size):
     # Sneek peak at first sample to learn alert length
     sample = next(samples)
-    alert1, alert2, mask1, mask2, correlation = sample
+    alert1, alert2, mask1, mask2, correlation, incident1, incident2 = sample
     inputs1 = np.empty((batch_size, len(sample[0])), dtype=alert1.dtype)
     inputs2 = np.empty_like(inputs1)
     masks1 = np.empty_like(inputs1)
