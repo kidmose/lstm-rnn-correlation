@@ -201,21 +201,20 @@ def load_data(file_names):
     start_time = time.time()
     logger.info("Loading {} files:".format(len(file_names)))
 
-    alerts = list()
-    incidents = list()
+    incidents = dict()
     for i, fn in enumerate(file_names):
         i += 1
+        incidents[i] = list()
         logger.info(' - {}/{} {}'.format(i, len(file_names), fn))
         with open(fn, 'r') as f:
             for l in f.readlines():
-                alerts.append(l)
-                incidents.append(i)
+                incidents[i].append(l)
 
     logger.info("Completed loading {} alerts in {}s".format(
-        len(alerts),
+        sum(map(len, incidents.values())),
         time.time()-start_time),
     )
-    return (alerts, incidents)
+    return incidents
 
 
 def encode(alerts, incidents):

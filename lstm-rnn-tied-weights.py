@@ -26,19 +26,19 @@
 # In network security a common task is to detect network intrusions and for this purpose an Intrusion Detections System (IDS) can be used to raise alerts on suspicious network traffic.
 # Snort, Suricata and Bro are examples of free and open source IDSs (Commercial products also exist).
 # The alerts generally provides low level information such as recognition of strings that are known to be part of security exploits or anomalous connection rates for a host.
-# By grouping alerts that are correlated into higher level events, false positives might be suppressed and attack scenarios becomes easier to recognise. 
+# By grouping alerts that are correlated into higher level events, false positives might be suppressed and attack scenarios becomes easier to recognise.
 # This is a take on how to correlate IDS alerts to determine which belong in the same group.
 # 
-# Alerts can be represented as log lines with various information such as time stamp, IP adresses, protocol information and a description of what triggered the alert. 
+# Alerts can be represented as log lines with various information such as time stamp, IP adresses, protocol information and a description of what triggered the alert.
 # It is assumed that such a log lines hold the information needed to determine if two alerts are correlated or not.
 # 
-# The input to the neural network will be two alerts and the output will indicate if they are correlated or not. 
-# In further detail the inputs is two strings of ASCII characters of variable length. 
-# For the output a Cosine Similarity layer is implemented and used to produce an output in the range [-1,1], with -1 meaning opposite, 0 meaning orthogonal and 1 meaning the same. 
+# The input to the neural network will be two alerts and the output will indicate if they are correlated or not.
+# In further detail the inputs is two strings of ASCII characters of variable length.
+# For the output a Cosine Similarity layer is implemented and used to produce an output in the range [-1,1], with -1 meaning opposite, 0 meaning orthogonal and 1 meaning the same.
 # 
 # For the hidden layers only a single layers of Long Short-Term Memory (LSTM) cells is used.
 # It is an option to experiment with adding more.
-# Being reccurrent, such a layer handles variable length input well. 
+# Being reccurrent, such a layer handles variable length input well.
 # 
 # While it turned out to be to challenging to implement, the initial idea was to let the two inputs pass through LSTM layers with identical weights.
 # The intent was to have them act as transformations into a space where cosine similarity could be used to measure similarity of the alerts.
@@ -75,6 +75,7 @@ import json
 import re
 import subprocess
 
+import netaddr
 import numpy as np
 import theano
 import theano.tensor as T
@@ -104,7 +105,7 @@ env['MASKING'] = os.environ.get('MASKING', str())
 env['MASK_IP'] = 'ip' in env['MASKING'].lower()
 env['MASK_TS'] = 'ts' in env['MASKING'].lower()
 
-# cutting 
+# cutting
 env['CUTTING'] = os.environ.get('CUTTING', str())
 if 'pair' in env['CUTTING'].lower():
     env['CUT_PAIR'] = True
@@ -158,7 +159,7 @@ target_var = T.dvector('targets')
 
 # First line
 l_in = InputLayer(shape=(n_alerts, l_alerts), input_var=input_var, name='INPUT-LAYER')
-l_emb = EmbeddingLayer(l_in, n_alphabet, n_alphabet, 
+l_emb = EmbeddingLayer(l_in, n_alphabet, n_alphabet,
                          W=np.eye(n_alphabet),
                          name='EMBEDDING-LAYER')
 l_emb.params[l_emb.W].remove('trainable') # Fix weight
@@ -188,7 +189,7 @@ pred_unit = get_output(
 ).eval({input_var: X_unit, mask_var: mask_unit})
 assert pred_unit.shape == (n_alerts_unit, l_alerts_unit, num_units), "Unexpected dimensions"
 pred_unit = get_output(
-    l_lstm, 
+    l_lstm,
     inputs={l_in: input_var, l_mask: mask_var}
 ).eval({input_var: [[1],[1]], mask_var: [[1],[1]]})
 assert np.all(pred_unit[0] == pred_unit[1]), "Repeated alerts must produce the same"
@@ -263,6 +264,18 @@ logger.debug("Spent {}s compilling.".format(time.time()-t))
 
 # In[ ]:
 
+def get_random_ip(invalid={}, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
+    ip = netaddr.IPAddress('.'.join(
+            [str(octet) for octet in np.random.randint(256, size=(4))]
+        ))
+
+    if str(ip) not in invalid and ip.is_unicast() and not ip.is_loopback():
+        return str(ip)
+    else:
+        return get_random_ip(invalid=invalid)
+
 def mask_ips(alerts):
     logger.info('Masking out IP addresses')
     pattern = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
@@ -284,8 +297,25 @@ def break_down_data(labels):
     result += 'Norm.: '+('{: >9.2f}%'*len(u)).format(*c_norm)
     return result
 
-logger.info("Loading data...")
-alerts, incidents = load_data(glob.glob('data/*.out'))
+data = load_data(glob.glob('data/*.out'))
+
+logger.info("Rewriting victim IP address")
+old_ip = '147.32.84.165'
+used_ips = {old_ip}
+for incident, alerts in data.items():
+    new_ip = get_random_ip(invalid=used_ips, seed=incident)
+    used_ips.add(new_ip)
+    logger.info("Replacing {} with {} for incident {}".format(
+            old_ip, new_ip, incident,
+        ))
+    data[incident] = map(lambda alert: alert.replace(old_ip, new_ip), alerts)
+
+incidents = list()
+alerts = list()
+for k,vs in data.items():
+    for v in vs:
+        incidents.append(k)
+        alerts.append(v)
 
 # If/what to mask out
 if env['MASK_IP']:
@@ -302,28 +332,28 @@ if env.get('CUT_PAIR', False):
         pairs = cross_join(data, offset=offset)
         for i in range(env['MAX_PAIRS']):
             yield next(pairs)
-            
+
     get_train_batch = lambda : _get_batch(0)
     get_val_batch = lambda : _get_batch(env['MAX_PAIRS'])
     get_test_batch = lambda : _get_batch(env['MAX_PAIRS']*2)
-    
+
 elif env.get('CUT_INC', False):
     alerts, masks, incidents = data
     train, val, test = split_data(alerts, masks, incidents, env['SPLIT'])
-    
+
     def _get_batch(batch):
         for sample in cross_join(batch, max_alerts=env['MAX_PAIRS']):
             yield sample
-    
+
     get_train_batch = lambda : _get_batch(train)
     get_val_batch = lambda : _get_batch(val)
     get_test_batch = lambda : _get_batch(test)
-            
+
 elif env.get('CUT_NO', False):
     def get_train_batch():
         for sample in cross_join(data, max_alerts=env['MAX_PAIRS']):
             yield sample
-            
+
     get_val_batch = get_train_batch
     get_test_batch = get_train_batch
 
@@ -349,7 +379,7 @@ for epoch in range(env['EPOCHS']):
         train_err += train_fn(*batch)
         train_batches += 1
         logger.debug('Batch complete')
-    
+
     #if (epoch+1) % (env['EPOCHS']/10) == 0:
     if True:
         val_err = 0
@@ -367,7 +397,7 @@ for epoch in range(env['EPOCHS']):
         logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
         logger.info("  validation accuracy:\t\t{:.2f} %".format(
             val_acc / val_batches * 100))
-        
+
     logger.debug('Epoch complete')
 
 test_err = 0
