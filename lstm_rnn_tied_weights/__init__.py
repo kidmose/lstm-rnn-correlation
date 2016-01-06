@@ -229,6 +229,8 @@ def encode(alerts, incidents):
     mask_matrix: Dimensions like alert_matrix. Encoding length of alerts with one of {0,1} pr. character.
     incident: list an entry for each row in alert_matrix, identifying source file for the row.
     """
+    alerts = list(alerts)
+    incidents = list(incidents)
     assert len(alerts) == len(incidents), "Inputs must have same length."
     incidents = np.array(incidents)
 
