@@ -88,7 +88,8 @@ from lasagne.objectives import *
 
 import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
-from lstm_rnn_tied_weights import load_data, encode, split_data, cross_join, iterate_minibatches
+from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit
+from lstm_rnn_tied_weights import iterate_minibatches
 logger = lstm_rnn_tied_weights.logger
 
 env = dict()
@@ -106,13 +107,17 @@ env['MASK_IP'] = 'ip' in env['MASKING'].lower()
 env['MASK_TS'] = 'ts' in env['MASKING'].lower()
 
 # cutting
-env['CUTTING'] = os.environ.get('CUTTING', str())
-if 'pair' in env['CUTTING'].lower():
-    env['CUT_PAIR'] = True
-elif 'incident' in env['CUTTING'].lower():
+env['CUT'] = os.environ.get('CUT', str())
+if 'none' in env['CUT'].lower():
+    env['CUT_NONE'] = True
+elif 'inc' in env['CUT'].lower():
     env['CUT_INC'] = True
+elif 'alert' in env['CUT'].lower():
+    env['CUT_ALERT'] = True
+elif 'pair' in env['CUT'].lower():
+    env['CUT_PAIR'] = True
 else:
-    env['CUT_NO'] = True
+    raise NotImplementedError("Pleas set CUT={none|inc|alert|pair} (CUT={})".format(env['CUT']))
 
 # Data control
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 1000000))
@@ -125,6 +130,8 @@ logger.info("env: " + str(env))
 for k in sorted(env.keys()):
     logger.info('env[\'{}\']: {}'.format(k,env[k]))
 
+
+# ## Build network
 
 # In[ ]:
 
@@ -297,65 +304,79 @@ def break_down_data(labels):
     result += 'Norm.: '+('{: >9.2f}%'*len(u)).format(*c_norm)
     return result
 
-data = load_data(glob.glob('data/*.out'))
+# logger.info("Rewriting victim IP address")
+# old_ip = '147.32.84.165'
+# used_ips = {old_ip}
+# for incident, alerts in data.items():
+#     new_ip = get_random_ip(invalid=used_ips, seed=incident)
+#     used_ips.add(new_ip)
+#     logger.info("Replacing {} with {} for incident {}".format(
+#             old_ip, new_ip, incident,
+#         ))
+#     data[incident] = map(lambda alert: alert.replace(old_ip, new_ip), alerts)
 
-logger.info("Rewriting victim IP address")
-old_ip = '147.32.84.165'
-used_ips = {old_ip}
-for incident, alerts in data.items():
-    new_ip = get_random_ip(invalid=used_ips, seed=incident)
-    used_ips.add(new_ip)
-    logger.info("Replacing {} with {} for incident {}".format(
-            old_ip, new_ip, incident,
-        ))
-    data[incident] = map(lambda alert: alert.replace(old_ip, new_ip), alerts)
+# incidents = list()
+# alerts = list()
+# for k,vs in data.items():
+#     for v in vs:
+#         incidents.append(k)
+#         alerts.append(v)
 
-incidents = list()
-alerts = list()
-for k,vs in data.items():
-    for v in vs:
-        incidents.append(k)
-        alerts.append(v)
+# # If/what to mask out
+# if env['MASK_IP']:
+#     alerts = mask_ips(alerts)
+# if env['MASK_TS']:
+#     alerts = mask_tss(alerts)
 
-# If/what to mask out
-if env['MASK_IP']:
-    alerts = mask_ips(alerts)
-if env['MASK_TS']:
-    alerts = mask_tss(alerts)
 
-data = encode(alerts, incidents)
-logger.info('Breakdown of original data:\n'+break_down_data(incidents)+'\n')
+# ## Prepare data
 
-# How to split train/validation/test data
-if env.get('CUT_PAIR', False):
-    def _get_batch(offset):
-        pairs = cross_join(data, offset=offset)
-        for i in range(env['MAX_PAIRS']):
-            yield next(pairs)
+# In[ ]:
 
-    get_train_batch = lambda : _get_batch(0)
-    get_val_batch = lambda : _get_batch(env['MAX_PAIRS'])
-    get_test_batch = lambda : _get_batch(env['MAX_PAIRS']*2)
+modifier_fns = None
+
+def _get_batch(
+        alerts,
+        max_pairs,
+):
+    for sample in limit(
+            cross_join(alerts),
+            max_pairs,
+    ):
+        yield sample
+
+train_max, val_max, test_max = (np.array(env['SPLIT'])/sum(env['SPLIT'])*env['MAX_PAIRS']).astype(int)
+
+incidents = load(glob.glob('data/*.out'))
+incidents = modify(incidents, modifier_fns)
+alerts = pool(incidents)
+
+logger.info('Breakdown of original data:\n'+break_down_data([i[0] for i in pool(incidents)])+'\n')
+
+if env.get('CUT_NONE', False):
+    get_train_batch = lambda: _get_batch(alerts, train_max)
+    get_val_batch = lambda: _get_batch(alerts, val_max)
+    get_test_batch = lambda: _get_batch(alerts, test_max)
 
 elif env.get('CUT_INC', False):
-    alerts, masks, incidents = data
-    train, val, test = split_data(alerts, masks, incidents, env['SPLIT'])
+    incidents = split(incidents, env['SPLIT'])
+    alerts_train, alerts_val, alerts_test = tuple(map(pool, incidents))
 
-    def _get_batch(batch):
-        for sample in cross_join(batch, max_alerts=env['MAX_PAIRS']):
-            yield sample
+    get_train_batch = lambda: _get_batch(alerts_train, train_max)
+    get_val_batch = lambda: _get_batch(alerts_val, val_max)
+    get_test_batch = lambda: _get_batch(alerts_test, test_max)
 
-    get_train_batch = lambda : _get_batch(train)
-    get_val_batch = lambda : _get_batch(val)
-    get_test_batch = lambda : _get_batch(test)
+elif env.get('CUT_ALERT', False):
+    raise NotImplementedError()
+elif env.get('CUT_PAIR', False):
+    raise NotImplementedError()
+else:
+    raise NotImplementedError("No cut selected")
 
-elif env.get('CUT_NO', False):
-    def get_train_batch():
-        for sample in cross_join(data, max_alerts=env['MAX_PAIRS']):
-            yield sample
 
-    get_val_batch = get_train_batch
-    get_test_batch = get_train_batch
+# ## Evaluate
+
+# In[ ]:
 
 a1, a2, m1, m2, cor, inc1, inc2 = range(7)
 for cut, batch_fn in [

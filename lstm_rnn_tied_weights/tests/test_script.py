@@ -57,13 +57,22 @@ class Test(unittest.TestCase):
         env['MASKING'] = 'tsip'
         self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
 
-    def test_split(self):
+    def cut_helper(self, env_cut):
         env = os.environ.copy()
         env['MAX_PAIRS'] = '10'
         env['BATCH_SIZE'] = '2'
+        env['CUT'] = env_cut
+        self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
 
-        self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
-        env['CUTTING'] = 'pair'
-        self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
-        env['CUTTING'] = 'incident'
-        self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
+    def test_cut_none(self):
+        self.cut_helper('none')
+
+    def test_cut_inc(self):
+        self.cut_helper('inc')
+
+    def test_cut_alert(self):
+        self.cut_helper('alert')
+
+    def test_cut_pair(self):
+        self.cut_helper('pair')
+

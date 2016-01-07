@@ -27,6 +27,7 @@ import time
 import math
 import numpy as np
 import logging
+import random
 
 def get_logger(name):
     logger = logging.getLogger(name)
@@ -231,7 +232,6 @@ def modify(
 
 def pool(
         incidents,
-        shuffle=False,
 ):
     """
     Pools incidents into one list of alerts.
@@ -268,34 +268,45 @@ def encode(alerts):
 
     return (alert_matrix, mask_matrix, incidents)
 
-# def split_data(
-#     alerts,
-#     masks,
-#     incidents,
-#     split,
-# ):
-#     """Split data into training, validation and test sets"""
-#     assert len(alerts) == len(masks)
-#     assert len(alerts) == len(incidents)
-#     assert alerts.shape == masks.shape
-#     assert len(split) == 3
-#     n = len(alerts)
+def split(
+        samples,
+        split,
+):
+    """
+    Split data into training, validation and test sets.
 
-#     weights = np.array(split)
-#     weights = (weights/sum(weights)*n).astype(int)
-#     idxs = list(np.cumsum(weights))
-#     idxs = [0] + idxs
+    Applies a deterministic shuffle on input before splitting.
+    """
+    assert len(split) == 3
+    n = len(samples)
 
-#     logger.info("Splitting {} samples into: ".format(len(alerts)) + str(weights))
-#     for start, end in zip (idxs[:-1], idxs[1:]):
-#         yield alerts[start:end], masks[start:end], incidents[start:end]
+    weights = np.array(split)
+    weights = (weights/sum(weights)*n).astype(int)
+    idxs = list(np.cumsum(weights))
+    idxs = [0] + idxs
+
+    random.seed(1131662768)
+    random.shuffle(samples)
+
+    logger.info("Splitting {} samples into: ".format(len(samples)) + str(weights))
+
+    return tuple((
+        samples[start:end]
+        for start, end
+        in zip (idxs[:-1], idxs[1:])))
 
 def cross_join(
         alerts,
-        max_alerts=0,
         offset=0,
 ):
-    """Cross join list of alerts with self and track if incident is the same."""
+    """
+    [BUGGED] Cross join list of alerts with self and track if incident is the same.
+
+    Applies a deterministic shuffle on output.
+
+    BUG: the current approach with looping over two index arrays fails to 
+    shuffle uniformly; First n pairs will half the same, next n pairs also and so on.
+    """
     alerts, masks, incidents = encode(alerts)
 
     assert len(alerts) == len(masks)
@@ -321,12 +332,11 @@ def cross_join(
         )
 
     def produce_all_pairs():
-
         # Handle offsetting
         i_offset = offset // len(alerts)
         j_offset = offset % len(alerts)
         i = i_idxs[i_offset] # find first row to be used
-        for j in j_idxs[j_offset:]: # find elementts to be used
+        for j in j_idxs[j_offset:]: # find elements to be used
             yield produce_one_pair(i, j)
 
         # remainder is straight forward
@@ -334,19 +344,21 @@ def cross_join(
             for j in j_idxs:
                 yield produce_one_pair(i, j)
 
-    def limit(iterable):
-        logger.debug('Limitting to max_alerts={}'.format(max_alerts))
-        for pair, cnt in zip(iterable, range(max_alerts)):
-            yield pair
-        logger.debug('Succescully limited to {} pairs (max_alerts={})'.format(cnt, max_alerts))
-
     pairs = produce_all_pairs()
-    if max_alerts is not None:
-        pairs = limit(pairs)
 
     for cnt, pair in enumerate(pairs):
         yield pair
     logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt+1))
+
+
+def limit(iterable, max_samples):
+    logger.debug('Limitting to max_samples={}'.format(max_samples))
+    for sample, cnt in zip(iterable, range(max_samples)):
+        yield sample
+    cnt += 1 # from zero to 1 indexed
+    if cnt != max_samples:
+        logger.warn("Iterable empty before max_samples read")
+    logger.debug('Limited to {} pairs (max_samples={})'.format(cnt, max_samples))
 
 
 def iterate_minibatches(samples, batch_size):
