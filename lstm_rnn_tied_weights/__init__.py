@@ -192,12 +192,17 @@ def clone(src_net, dst_net, mask_input):
     return dst_net
 
 # Data preparation / loading functions
-def load_data(file_names):
+def load(
+        file_names,
+        shuffle=False,
+):
     """
-    Loads alerts from the files listed in file_names and returns them along with incident id.
+    Loads incidents from the files listed in file_names, enumerates and returns a dict
+    """
+    if shuffle:
+        logger.error("Not implemented")
+        raise NotImplementedError()
 
-    files_names: full or relative path to files that needs to be loaded.
-    """
     start_time = time.time()
     logger.info("Loading {} files:".format(len(file_names)))
 
@@ -216,24 +221,46 @@ def load_data(file_names):
     )
     return incidents
 
+def modify(
+    incidents,
+    modifier_fns,
+):
+    """
+    Modifies alerts in incidents by executing modifier function on them,
+    """
+    if modifier_fns is not None:
+        logger.error("Not implemented")
+        raise NotImplementedError()
+    return incidents
 
-def encode(alerts, incidents):
+def pool(
+    incidents,
+    shuffle=False,
+):
+    """
+    Pools incidents into one list of alerts.
+
+    incidents: dict with incident ids mapping to list of alert strings
+    returns: list of (<incident id>, <alert text string>) tuples
+    """
+    def gen():
+        for incident, alerts in incidents.items():
+            for alert in alerts:
+                yield (incident, alert)
+    return list(gen())
+
+def encode(alerts):
     """
     Encodes alerts as one hot encoding for ascii chars and calculates masks.
 
-    alerts: list of strings, each containing an alert.
-    incidents: list of incidents IDs for each alert.
+    alerts: list of (<incident id>, <alert text string>) tuples
 
     returns: (alert_matrix, mask_matrix, incidents)
     alert_matrix: numpy matrix of size 'alert count' by 'max length among alerts' with ascii(int8) encoded strings.
     mask_matrix: Dimensions like alert_matrix. Encoding length of alerts with one of {0,1} pr. character.
     incident: list an entry for each row in alert_matrix, identifying source file for the row.
     """
-    alerts = list(alerts)
-    incidents = list(incidents)
-    assert len(alerts) == len(incidents), "Inputs must have same length."
-    incidents = np.array(incidents)
-
+    incidents, alerts = zip(*alerts)
     lens = list(map(len, alerts))
     alert_matrix = np.zeros((len(alerts),max(lens)), dtype='int8')
     mask_matrix = np.zeros_like(alert_matrix)
@@ -244,35 +271,36 @@ def encode(alerts, incidents):
 
     return (alert_matrix, mask_matrix, incidents)
 
-def split_data(
-    alerts,
-    masks,
-    incidents,
-    split,
-):
-    """Split data into training, validation and test sets"""
-    assert len(alerts) == len(masks)
-    assert len(alerts) == len(incidents)
-    assert alerts.shape == masks.shape
-    assert len(split) == 3
-    n = len(alerts)
+# def split_data(
+#     alerts,
+#     masks,
+#     incidents,
+#     split,
+# ):
+#     """Split data into training, validation and test sets"""
+#     assert len(alerts) == len(masks)
+#     assert len(alerts) == len(incidents)
+#     assert alerts.shape == masks.shape
+#     assert len(split) == 3
+#     n = len(alerts)
 
-    weights = np.array(split)
-    weights = (weights/sum(weights)*n).astype(int)
-    idxs = list(np.cumsum(weights))
-    idxs = [0] + idxs
+#     weights = np.array(split)
+#     weights = (weights/sum(weights)*n).astype(int)
+#     idxs = list(np.cumsum(weights))
+#     idxs = [0] + idxs
 
-    logger.info("Splitting {} samples into: ".format(len(alerts)) + str(weights))
-    for start, end in zip (idxs[:-1], idxs[1:]):
-        yield alerts[start:end], masks[start:end], incidents[start:end]
+#     logger.info("Splitting {} samples into: ".format(len(alerts)) + str(weights))
+#     for start, end in zip (idxs[:-1], idxs[1:]):
+#         yield alerts[start:end], masks[start:end], incidents[start:end]
 
 def cross_join(
-    cut,
-    max_alerts=None,
-    offset=0,
+        alerts,
+        max_alerts=0,
+        offset=0,
 ):
     """Cross join list of alerts with self and track if incident is the same."""
-    alerts, masks, incidents = cut
+    alerts, masks, incidents = encode(alerts)
+
     assert len(alerts) == len(masks)
     assert len(alerts) == len(incidents)
     assert alerts.shape == masks.shape
