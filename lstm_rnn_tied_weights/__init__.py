@@ -194,36 +194,32 @@ def clone(src_net, dst_net, mask_input):
 # Data preparation / loading functions
 def load(
         file_names,
-        shuffle=False,
 ):
     """
     Loads incidents from the files listed in file_names, enumerates and returns a dict
     """
-    if shuffle:
-        logger.error("Not implemented")
-        raise NotImplementedError()
-
     start_time = time.time()
     logger.info("Loading {} files:".format(len(file_names)))
 
-    incidents = dict()
+    incidents = list()
     for i, fn in enumerate(file_names):
         i += 1
-        incidents[i] = list()
+        alerts = list()
         logger.info(' - {}/{} {}'.format(i, len(file_names), fn))
         with open(fn, 'r') as f:
             for l in f.readlines():
-                incidents[i].append(l)
+                alerts.append(l)
+        incidents.append((i, alerts))
 
     logger.info("Completed loading {} alerts in {}s".format(
-        sum(map(len, incidents.values())),
+        sum(map(lambda incident: len(incident[1]), incidents)),
         time.time()-start_time),
     )
     return incidents
 
 def modify(
-    incidents,
-    modifier_fns,
+        incidents,
+        modifier_fns,
 ):
     """
     Modifies alerts in incidents by executing modifier function on them,
@@ -234,8 +230,8 @@ def modify(
     return incidents
 
 def pool(
-    incidents,
-    shuffle=False,
+        incidents,
+        shuffle=False,
 ):
     """
     Pools incidents into one list of alerts.
@@ -244,7 +240,8 @@ def pool(
     returns: list of (<incident id>, <alert text string>) tuples
     """
     def gen():
-        for incident, alerts in incidents.items():
+        for incident_alerts in incidents:
+            incident, alerts = incident_alerts
             for alert in alerts:
                 yield (incident, alert)
     return list(gen())
