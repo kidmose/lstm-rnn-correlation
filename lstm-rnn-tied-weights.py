@@ -357,8 +357,6 @@ elif env.get('CUT_NO', False):
     get_val_batch = get_train_batch
     get_test_batch = get_train_batch
 
-list(get_train_batch())[0]
-
 a1, a2, m1, m2, cor, inc1, inc2 = range(7)
 for cut, batch_fn in [
     ('training', get_train_batch),
