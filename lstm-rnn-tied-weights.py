@@ -324,7 +324,7 @@ if env['MASK_TS']:
     alerts = mask_tss(alerts)
 
 data = encode(alerts, incidents)
-logger.info('Breakdown of original data:\n'+break_down_data(incidents))
+logger.info('Breakdown of original data:\n'+break_down_data(incidents)+'\n')
 
 # How to split train/validation/test data
 if env.get('CUT_PAIR', False):
@@ -360,15 +360,17 @@ elif env.get('CUT_NO', False):
 list(get_train_batch())[0]
 
 a1, a2, m1, m2, cor, inc1, inc2 = range(7)
-logger.info('Breakdown of training data, correlation:\n'+
-            break_down_data([p[cor] for p in get_train_batch()])
-           )
-logger.info('Breakdown of training data, incident 1:\n'+
-            break_down_data([p[inc1] for p in get_train_batch()])
-           )
-logger.info('Breakdown of training data, incident 2:\n'+
-            break_down_data([p[inc2] for p in get_train_batch()])
-           )
+for cut, batch_fn in [
+    ('training', get_train_batch),
+    ('validation', get_val_batch),
+    ('testing', get_test_batch),
+]:
+    logger.info('Breakdown of {} data;\n'.format(cut) +
+                'correlation:\n'+break_down_data([p[cor] for p in batch_fn()])+'\n'+
+                'incident 1:\n'+break_down_data([p[inc1] for p in batch_fn()])+'\n'+
+                'incident 2:\n'+break_down_data([p[inc2] for p in batch_fn()])+'\n'+
+                ''
+               )
 
 logger.info("Starting training...")
 for epoch in range(env['EPOCHS']):
