@@ -321,7 +321,7 @@ def cross_join(
 
     for cnt, pair in enumerate(pairs):
         yield pair
-    logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt))
+    logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt+1))
 
 
 def iterate_minibatches(samples, batch_size):
