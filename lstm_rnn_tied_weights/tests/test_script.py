@@ -31,6 +31,10 @@ class Test(unittest.TestCase):
     def setUp(self):
         pass
 
+    def tearDown(self):
+        if os.path.isfile('tmp.py'):
+            os.remove('tmp.py')
+
     def test_exported(self):
         bn = 'lstm-rnn-tied-weights'
         r = call([
@@ -42,7 +46,6 @@ class Test(unittest.TestCase):
         self.assertFalse(r, "Failed to export")
         r = call(['diff', bn+'.py', 'tmp.py'])
         self.assertFalse(r, 'script and notebook mismatch')
-        call(['rm', 'tmp.py'])
 
     def test_mask(self):
         env = os.environ.copy()
@@ -57,7 +60,11 @@ class Test(unittest.TestCase):
         env['MASKING'] = 'tsip'
         self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
 
-    def cut_helper(self, env_cut):
+    def script_helper(
+            self,
+            env_cut='none',
+            env_mask='',
+    ):
         env = os.environ.copy()
         env['MAX_PAIRS'] = '10'
         env['BATCH_SIZE'] = '2'
@@ -65,14 +72,22 @@ class Test(unittest.TestCase):
         self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
 
     def test_cut_none(self):
-        self.cut_helper('none')
+        self.script_helper(env_cut='none')
 
     def test_cut_inc(self):
-        self.cut_helper('inc')
+        self.script_helper(env_cut='inc')
 
     def test_cut_alert(self):
-        self.cut_helper('alert')
+        self.script_helper(env_cut='alert')
 
     def test_cut_pair(self):
-        self.cut_helper('pair')
+        self.script_helper(env_cut='pair')
 
+    def test_mask_ip(self):
+        self.script_helper(env_mask='ip')
+
+    def test_mask_ts(self):
+        self.script_helper(env_mask='ts')
+
+    def test_mask_tsip(self):
+        self.script_helper(env_mask='tsip')
