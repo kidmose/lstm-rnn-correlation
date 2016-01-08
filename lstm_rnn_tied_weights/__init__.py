@@ -300,25 +300,26 @@ def cross_join(
         offset=0,
 ):
     """
-    [BUGGED] Cross join list of alerts with self and track if incident is the same.
+    Cross join list of alerts with self and track if incident is the same.
 
-    Applies a deterministic shuffle on output.
-
-    BUG: the current approach with looping over two index arrays fails to 
-    shuffle uniformly; First n pairs will half the same, next n pairs also and so on.
+    Applies a deterministic shuffle on output, allows offsetting for index like behaviour.
     """
     alerts, masks, incidents = encode(alerts)
 
-    assert len(alerts) == len(masks)
-    assert len(alerts) == len(incidents)
+    n = len(alerts)
+    assert n == len(masks)
+    assert n == len(incidents)
     assert alerts.shape == masks.shape
 
-    # Shuffle to sample across all alerts in a predictive fashion
     np.random.seed(1131662768)
-    i_idxs = np.arange(len(alerts))
-    np.random.shuffle(i_idxs)
-    j_idxs = np.arange(len(alerts))
-    np.random.shuffle(j_idxs)
+
+    spend = dict()
+    def get_next_indexes():
+        ij = (np.random.randint(n), np.random.randint(n))
+        while spend.get(ij, False):
+            ij = (np.random.randint(n), np.random.randint(n))
+        spend[ij] = True
+        return ij
 
     def produce_one_pair(i, j):
         return (
@@ -332,21 +333,14 @@ def cross_join(
         )
 
     def produce_all_pairs():
-        # Handle offsetting
-        i_offset = offset // len(alerts)
-        j_offset = offset % len(alerts)
-        i = i_idxs[i_offset] # find first row to be used
-        for j in j_idxs[j_offset:]: # find elements to be used
-            yield produce_one_pair(i, j)
+        for _ in range(offset):
+            get_next_indexes()
 
-        # remainder is straight forward
-        for i in i_idxs[i_offset+1:]:
-            for j in j_idxs:
-                yield produce_one_pair(i, j)
+        while len(spend) < n**2:
+            ij = get_next_indexes()
+            yield produce_one_pair(*ij)
 
-    pairs = produce_all_pairs()
-
-    for cnt, pair in enumerate(pairs):
+    for cnt, pair in enumerate(produce_all_pairs()):
         yield pair
     logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt+1))
 
