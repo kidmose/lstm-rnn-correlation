@@ -72,10 +72,8 @@ import os
 import time
 import glob
 import json
-import re
 import subprocess
 
-import netaddr
 import numpy as np
 import theano
 import theano.tensor as T
@@ -90,6 +88,7 @@ import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
 from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit
 from lstm_rnn_tied_weights import iterate_minibatches
+from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
 logger = lstm_rnn_tied_weights.logger
 
 env = dict()
@@ -101,10 +100,11 @@ if not isinstance(env['version'], str):
 # OMP
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 
-# Masking
+# Masking/modifying
 env['MASKING'] = os.environ.get('MASKING', str())
 env['MASK_IP'] = 'ip' in env['MASKING'].lower()
 env['MASK_TS'] = 'ts' in env['MASKING'].lower()
+env['UNIQUIFY_VICTIM'] = 'true' in os.environ.get('UNIQUIFY_VICTIM', 'true').lower()
 
 # cutting
 env['CUT'] = os.environ.get('CUT', str())
@@ -124,6 +124,9 @@ env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 1000000))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
 env['SPLIT'] = [int(el) for el in os.environ.get('SPLIT', '60,20,20').split(',')]
+
+# Metadata
+env['VICTIM_IP'] = '147.32.84.165'
 
 logger.info("Starting.")
 logger.info("env: " + str(env))
@@ -269,31 +272,9 @@ val_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var
 logger.debug("Spent {}s compilling.".format(time.time()-t))
 
 
+# ## Prepare data
+
 # In[ ]:
-
-def get_random_ip(invalid={}, seed=None):
-    if seed is not None:
-        np.random.seed(seed)
-    ip = netaddr.IPAddress('.'.join(
-            [str(octet) for octet in np.random.randint(256, size=(4))]
-        ))
-
-    if str(ip) not in invalid and ip.is_unicast() and not ip.is_loopback():
-        return str(ip)
-    else:
-        return get_random_ip(invalid=invalid)
-
-def mask_ips(alerts):
-    logger.info('Masking out IP addresses')
-    pattern = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
-    fn = lambda alert : re.sub(pattern, 'IP', alert)
-    return map(fn, alerts)
-
-def mask_tss(alerts):
-    logger.info('Masking out timestamps')
-    pattern = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
-    fn = lambda alert : re.sub(pattern, 'TIMESTAMP', alert)
-    return map(fn, alerts)
 
 def break_down_data(labels):
     u, c = np.unique(labels, return_counts=True)
@@ -304,36 +285,14 @@ def break_down_data(labels):
     result += 'Norm.: '+('{: >9.2f}%'*len(u)).format(*c_norm)
     return result
 
-# logger.info("Rewriting victim IP address")
-# old_ip = '147.32.84.165'
-# used_ips = {old_ip}
-# for incident, alerts in data.items():
-#     new_ip = get_random_ip(invalid=used_ips, seed=incident)
-#     used_ips.add(new_ip)
-#     logger.info("Replacing {} with {} for incident {}".format(
-#             old_ip, new_ip, incident,
-#         ))
-#     data[incident] = map(lambda alert: alert.replace(old_ip, new_ip), alerts)
-
-# incidents = list()
-# alerts = list()
-# for k,vs in data.items():
-#     for v in vs:
-#         incidents.append(k)
-#         alerts.append(v)
-
-# # If/what to mask out
-# if env['MASK_IP']:
-#     alerts = mask_ips(alerts)
-# if env['MASK_TS']:
-#     alerts = mask_tss(alerts)
-
-
-# ## Prepare data
-
-# In[ ]:
-
-modifier_fns = None
+# If/what to mask out or modify
+modifier_fns = []
+if env['MASK_IP']:
+    modifier_fns.append(mask_ips)
+if env['MASK_TS']:
+    modifier_fns.append(mask_tss)
+if env['UNIQUIFY_VICTIM']:
+    modifier_fns.append(lambda incidents: uniquify_victim(incidents, env['VICTIM_IP']))
 
 def _get_batch(
         alerts,

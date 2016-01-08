@@ -28,6 +28,8 @@ import math
 import numpy as np
 import logging
 import random
+import netaddr
+import re
 
 def get_logger(name):
     logger = logging.getLogger(name)
@@ -225,9 +227,9 @@ def modify(
     """
     Modifies alerts in incidents by executing modifier function on them,
     """
-    if modifier_fns is not None:
-        logger.error("Not implemented")
-        raise NotImplementedError()
+    for fn in modifier_fns:
+        logger.info('Applying modifier function: {}'.format(fn))
+        incidents = fn(incidents)
     return incidents
 
 def pool(
@@ -391,3 +393,51 @@ def iterate_minibatches(samples, batch_size):
     batches_expected = samples_processed // batch_size
     assert batches_expected == batches_produced, "Expected {} but produced {} batches". format(
         batches_expected, batches_produced)
+
+# Data modification methods used in modify
+def replace_re_in_alerts(alerts, pattern, new):
+    fn = lambda alert : re.sub(pattern, new, alert)
+    return map(fn, alerts)
+
+def mask_ips(incidents):
+    logger.info('Masking out IP addresses')
+    pattern = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+    return [
+        (incidentid, replace_re_in_alerts(alerts, pattern, '<IP>'))
+        for incidentid, alerts in incidents
+    ]
+
+def mask_tss(incidents):
+    logger.info('Masking out IP addresses')
+    pattern = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
+    return [
+        (incidentid, replace_re_in_alerts(alerts, pattern, '<TIMESTAMP>'))
+        for incidentid, alerts in incidents
+    ]
+
+def uniquify_victim(incidents, oldip):
+    logger.info("Uniquifying victims by replacing with random IPs (Same one within incident)")
+    incidentids, alertlists = zip(*incidents)
+    assert len(set(incidentids)) == len(incidents), "incidents ids must be unique"
+
+    def get_random_ip(used, seed=None):
+        np.random.seed(seed)
+        ip = netaddr.IPAddress('.'.join(
+                [str(octet) for octet in np.random.randint(256, size=(4))]
+            ))
+        if str(ip) not in used and ip.is_unicast() and not ip.is_loopback():
+            return str(ip)
+        else:
+            return get_random_ip(used)
+
+    ips = dict()
+    used = {oldip}
+    for i in incidentids:
+        ips[i] = get_random_ip(used, seed=i)
+        used = ips[i]
+    logger.info("New IPs: " + str(ips))
+
+    return [
+        (incidentid, replace_re_in_alerts(alerts, oldip, ips[incidentid]))
+        for incidentid, alerts in incidents
+    ]
