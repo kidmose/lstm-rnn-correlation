@@ -36,10 +36,11 @@ import numpy as np
 
 import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
-from lstm_rnn_tied_weights import load_data, encode, split_data, cross_join, iterate_minibatches
+from lstm_rnn_tied_weights import load, encode, cross_join, iterate_minibatches
 logger = lstm_rnn_tied_weights.logger
 
-alerts, incidents = load_data(glob.glob('data/*.out'))
+l = load(glob.glob('data/*.out'))
+incidents, alerts = zip(*[(i, item) for i, sublist in l for item in sublist])
 
 unique, counts = np.unique(incidents, return_counts=True)
 
