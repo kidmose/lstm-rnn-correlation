@@ -128,6 +128,10 @@ env['SPLIT'] = [int(el) for el in os.environ.get('SPLIT', '60,20,20').split(',')
 # Metadata
 env['VICTIM_IP'] = '147.32.84.165'
 
+# Neural network
+env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
+env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
+
 logger.info("Starting.")
 logger.info("env: " + str(env))
 for k in sorted(env.keys()):
@@ -154,7 +158,6 @@ logger.debug(mask_unit)
 n_alerts = None
 l_alerts = None
 n_alphabet = 2**7 # All ASCII chars
-num_units = 10
 
 
 # In[ ]:
@@ -174,7 +177,10 @@ l_emb = EmbeddingLayer(l_in, n_alphabet, n_alphabet,
                          name='EMBEDDING-LAYER')
 l_emb.params[l_emb.W].remove('trainable') # Fix weight
 l_mask = InputLayer(shape=(n_alerts, l_alerts), input_var=mask_var, name='MASK-INPUT-LAYER')
-l_lstm = LSTMLayer(l_emb, num_units=num_units, name='LSTM-LAYER', mask_input=l_mask)
+l_lstm = l_emb
+for i, num_units in enumerate(env['NN_UNITS']):
+    logger.info('Adding {} units for {} layer'.format(num_units, i))
+    l_lstm = LSTMLayer(l_lstm, num_units=num_units, name='LSTM-LAYER[{}]'.format(i), mask_input=l_mask)
 l_slice = SliceLayer(l_lstm, indices=-1, axis=1, name="SLICE-LAYER") # Only last timestep
 net = l_slice
 
@@ -258,7 +264,7 @@ prediction = get_output(cos_net)
 loss = binary_crossentropy(prediction, target_var)
 loss = loss.mean()
 params = get_all_params(cos_net, trainable=True)
-updates = sgd(loss, params, learning_rate=0.1)
+updates = sgd(loss, params, learning_rate=env['NN_LEARNING_RATE'])
 
 # Testing Procedure
 test_prediction = get_output(cos_net, deterministic=True)

@@ -49,32 +49,42 @@ class Test(unittest.TestCase):
 
     def script_helper(
             self,
-            env_cut='none',
-            env_mask='',
+            **kwargs
     ):
         env = os.environ.copy()
-        env['MAX_PAIRS'] = '10'
+        env['MAX_PAIRS'] = '2'
         env['BATCH_SIZE'] = '2'
-        env['CUT'] = env_cut
+        env['NN_UNITS'] = '2'
+        env['CUT'] = 'none'
+        for k, v in kwargs.items():
+            env[k] = v
         self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))
 
     def test_cut_none(self):
-        self.script_helper(env_cut='none')
+        self.script_helper(CUT='none')
 
     def test_cut_inc(self):
-        self.script_helper(env_cut='inc')
+        self.script_helper(CUT='inc')
 
     def test_cut_alert(self):
-        self.script_helper(env_cut='alert')
+        self.script_helper(CUT='alert')
 
     def test_cut_pair(self):
-        self.script_helper(env_cut='pair')
+        self.script_helper(CUT='pair')
 
     def test_mask_ip(self):
-        self.script_helper(env_mask='ip')
+        self.script_helper(MASKING='ip')
 
     def test_mask_ts(self):
-        self.script_helper(env_mask='ts')
+        self.script_helper(MASKING='ts')
 
     def test_mask_tsip(self):
-        self.script_helper(env_mask='tsip')
+        self.script_helper(MASKING='tsip')
+
+    def test_nn_units(self):
+        self.script_helper(NN_UNITS='1')
+        self.script_helper(NN_UNITS='1,2,3')
+
+    def test_learning_rate(self):
+        self.script_helper(NN_LEARNING_RATE='1e-6')
+        self.script_helper(NN_LEARNING_RATE='1e6')
