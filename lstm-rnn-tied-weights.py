@@ -327,11 +327,17 @@ elif env.get('CUT_INC', False):
     get_test_batch = lambda: _get_batch(alerts_test, test_max)
 
 elif env.get('CUT_ALERT', False):
-    raise NotImplementedError()
+    alerts_train, alerts_val, alerts_test = split(alerts, env['SPLIT'])
+
+    get_train_batch = lambda: _get_batch(alerts_train, train_max)
+    get_val_batch = lambda: _get_batch(alerts_val, val_max)
+    get_test_batch = lambda: _get_batch(alerts_test, test_max)
+
 elif env.get('CUT_PAIR', False):
     get_train_batch = lambda: _get_batch(alerts, train_max, offset=0)
     get_val_batch = lambda: _get_batch(alerts, val_max, offset=train_max)
     get_test_batch = lambda: _get_batch(alerts, test_max, offset=train_max+val_max)
+
 else:
     raise NotImplementedError("No cut selected")
 
