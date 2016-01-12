@@ -335,8 +335,12 @@ def cross_join(
         )
 
     def produce_all_pairs():
+        if offset > 0:
+            start_time = time.time()
         for _ in range(offset):
             get_next_indexes()
+        if offset > 0:
+            logger.info("Spend {:.3f}s offsetting with {} samples".format(time.time()-start_time, offset))
 
         while len(spend) < n**2:
             ij = get_next_indexes()

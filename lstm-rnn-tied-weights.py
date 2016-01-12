@@ -297,9 +297,10 @@ if env['UNIQUIFY_VICTIM']:
 def _get_batch(
         alerts,
         max_pairs,
+        offset=0,
 ):
     for sample in limit(
-            cross_join(alerts),
+            cross_join(alerts, offset=offset),
             max_pairs,
     ):
         yield sample
@@ -328,7 +329,9 @@ elif env.get('CUT_INC', False):
 elif env.get('CUT_ALERT', False):
     raise NotImplementedError()
 elif env.get('CUT_PAIR', False):
-    raise NotImplementedError()
+    get_train_batch = lambda: _get_batch(alerts, train_max, offset=0)
+    get_val_batch = lambda: _get_batch(alerts, val_max, offset=train_max)
+    get_test_batch = lambda: _get_batch(alerts, test_max, offset=train_max+val_max)
 else:
     raise NotImplementedError("No cut selected")
 

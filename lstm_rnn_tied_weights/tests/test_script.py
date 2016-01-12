@@ -68,7 +68,6 @@ class Test(unittest.TestCase):
     def test_cut_alert(self):
         self.script_helper(env_cut='alert')
 
-    @unittest.expectedFailure
     def test_cut_pair(self):
         self.script_helper(env_cut='pair')
 
