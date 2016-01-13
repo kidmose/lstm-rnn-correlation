@@ -52,7 +52,7 @@ class Test(unittest.TestCase):
             **kwargs
     ):
         env = os.environ.copy()
-        env['MAX_PAIRS'] = '2'
+        env['MAX_PAIRS'] = '100'
         env['BATCH_SIZE'] = '2'
         env['NN_UNITS'] = '2'
         env['CUT'] = 'none'
@@ -64,7 +64,10 @@ class Test(unittest.TestCase):
         self.script_helper(CUT='none')
 
     def test_cut_inc(self):
-        self.script_helper(CUT='inc')
+        self.script_helper(
+            CUT='inc',
+            SPLIT='1,1,1',
+        )
 
     def test_cut_alert(self):
         self.script_helper(CUT='alert')

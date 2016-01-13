@@ -311,12 +311,19 @@ def _get_batch(
     ):
         yield sample
 
-train_max, val_max, test_max = (np.array(env['SPLIT'])/sum(env['SPLIT'])*env['MAX_PAIRS']).astype(int)
-
 incidents = load(glob.glob('data/*.out'))
 incidents = modify(incidents, modifier_fns)
 alerts = pool(incidents)
 
+pair_cnt = min([env['MAX_PAIRS'], len(alerts)**2])
+logger.info('Maximum possible pairs; pair_cnt={} env[\'MAX_PAIRS\']={}, len(alerts)**2={}'.format(
+        pair_cnt,
+        env['MAX_PAIRS'],
+        len(alerts)**2,
+    ))
+maxes = (np.array(env['SPLIT'])/sum(env['SPLIT'])*pair_cnt).astype(int)
+logger.info('train, val and test max pairs: {}'.format(maxes))
+train_max, val_max, test_max = maxes
 logger.info('Breakdown of original data:\n'+break_down_data([i[0] for i in pool(incidents)])+'\n')
 
 if env.get('CUT_NONE', False):
@@ -358,12 +365,10 @@ for cut, batch_fn in [
     ('validation', get_val_batch),
     ('testing', get_test_batch),
 ]:
-    logger.info('Breakdown of {} data;\n'.format(cut) +
-                'correlation:\n'+break_down_data([p[cor] for p in batch_fn()])+'\n'+
-                'incident 1:\n'+break_down_data([p[inc1] for p in batch_fn()])+'\n'+
-                'incident 2:\n'+break_down_data([p[inc2] for p in batch_fn()])+'\n'+
-                ''
-               )
+    logger.info('Breakdown of {} data;\n'.format(cut))
+    logger.info('correlation:\n'+break_down_data([p[cor] for p in batch_fn()]))
+    logger.info('incident 1:\n'+break_down_data([p[inc1] for p in batch_fn()]))
+    logger.info('incident 2:\n'+break_down_data([p[inc2] for p in batch_fn()])+'\n')
 
 logger.info("Starting training...")
 for epoch in range(env['EPOCHS']):
