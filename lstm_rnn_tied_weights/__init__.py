@@ -302,9 +302,9 @@ def cross_join(
         offset=0,
 ):
     """
-    Cross join list of alerts with self and track if incident is the same.
+    [BUGGED] Cross join list of alerts with self and track if incident is the same.
 
-    Applies a deterministic shuffle on output, allows offsetting for index like behaviour.
+    Applies a deterministic shuffle on output.
     """
     alerts, masks, incidents = encode(alerts)
 
@@ -312,16 +312,6 @@ def cross_join(
     assert n == len(masks)
     assert n == len(incidents)
     assert alerts.shape == masks.shape
-
-    np.random.seed(1131662768)
-
-    spend = dict()
-    def get_next_indexes():
-        ij = (np.random.randint(n), np.random.randint(n))
-        while spend.get(ij, False):
-            ij = (np.random.randint(n), np.random.randint(n))
-        spend[ij] = True
-        return ij
 
     def produce_one_pair(i, j):
         return (
@@ -334,22 +324,62 @@ def cross_join(
             incidents[j],
         )
 
-    def produce_all_pairs():
-        if offset > 0:
-            start_time = time.time()
-        for _ in range(offset):
-            get_next_indexes()
-        if offset > 0:
-            logger.info("Spend {:.3f}s offsetting with {} samples".format(time.time()-start_time, offset))
-
-        while len(spend) < n**2:
-            ij = get_next_indexes()
-            yield produce_one_pair(*ij)
-
-    for cnt, pair in enumerate(produce_all_pairs()):
-        yield pair
+    logger.info(
+        "Crossjoin will produce {} pairs from {} alerts, offset with {}"
+        .format(n**2, n, offset)
+    )
+    for cnt, (i, j) in enumerate(cross_join_impl_python(n, offset)):
+        yield produce_one_pair(i, j)
     logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt+1))
 
+
+def cross_join_impl_forfor(n, offset):
+    """
+    [BUGGED] Cross join implemented with two nested for loops.
+
+    Scales well as it does not produce entire matrix, but see "BUG"
+
+    BUG: Looping over two index arrays fails to shuffle uniformly;
+    First n pairs will have the same alert in position one,
+    next n pairs also and so on.
+    """
+    # Shuffle to sample across all alerts in a predictive fashion
+    np.random.seed(1131662768)
+    i_idxs = np.arange(n)
+    np.random.shuffle(i_idxs)
+    j_idxs = np.arange(n)
+    np.random.shuffle(j_idxs)
+
+    # Handle offsetting
+    i_offset = offset // len(alerts)
+    j_offset = offset % len(alerts)
+    i = i_idxs[i_offset] # find first row to be used
+    for j in j_idxs[j_offset:]: # find elements to be used
+        yield produce_one_pair(i, j)
+
+    # remainder is straight forward
+    for i in i_idxs[i_offset+1:]:
+        for j in j_idxs:
+            yield (i, j)
+
+
+def cross_join_impl_python(n, offset):
+    """
+    Cross join implemented with python core methods.
+
+    Efficient in time, requires list of n**2 index pairs in memory.
+    """
+    idxs = [(i,j) for i in range(n) for j in range(n)]
+    random.seed(1131662768)
+    random.shuffle(idxs)
+    for ij in idxs[offset:]:
+        yield ij
+
+def cross_join_impl_rand_samp(n, offset):
+    """
+    [NotImplemented] Cross joing implemented with random sampling.
+    """
+    raise NotImplementedError("Please see recent commit for how this can be done")
 
 def limit(iterable, max_samples):
     logger.debug('Limitting to max_samples={}'.format(max_samples))
