@@ -275,6 +275,7 @@ test_acc = T.mean(T.eq(test_prediction > 0.5, target_var),
 
 train_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], loss, updates=updates)
 val_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], [test_loss, test_acc])
+prediction_fn = theano.function([input_var, input_var2, mask_var, mask_var2], prediction)
 logger.debug("Spent {}s compilling.".format(time.time()-t))
 
 
@@ -422,6 +423,64 @@ logger.debug(model_str)
 
 
 logger.info('Completed.')
+
+
+# In[ ]:
+
+error_dict = dict()
+
+def update(ed, pred_float, cor, i):
+    pred = pred_float > 0.5
+    ed[i] = ed.get(i, np.zeros(4, int)) + [
+        pred == cor and pred, # True positive
+        pred == cor and not pred, # True Negative
+        pred != cor and pred, # False positive
+        pred != cor and not pred, # False Negative
+    ]
+
+for sample in get_test_batch():
+    alert1, alert2, mask1, mask2, cor, i, j = sample
+    pred_float = prediction_fn([alert1], [alert2], [mask1], [mask2])[0]
+    update(error_dict, pred_float, cor, i)
+    update(error_dict, pred_float, cor, j)
+
+(labels, errors) = zip(*sorted(list(error_dict.items())))
+errors = np.array(errors)
+errors_norm = errors / errors.sum(axis=1)[:, None]
+
+import matplotlib.pyplot as plt
+
+index = np.arange(len(labels))
+
+fig, ax = plt.subplots()
+
+bar_width = 0.1
+
+
+
+types = ['True Positive', 'True Negative', 'False Positive', 'False Negative']
+colors = ['g', 'b', 'r', 'y']
+
+for i, (typ, color) in enumerate(zip(types, colors)):
+    rect = plt.bar(
+        index + bar_width*i,
+        errors_norm[:,i],
+        bar_width,
+        alpha=0.8,
+        color=color,
+        error_kw={'ecolor': '0.3'},
+        label=typ,
+    )
+
+plt.xlabel('Incidents')
+plt.ylabel('Rate')
+plt.xticks(index + bar_width, labels)
+plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=2, mode="expand", borderaxespad=0.)
+
+plt.tight_layout()
+
+plt.savefig('foo.pdf', bbox_inches='tight')
 
 
 # In[ ]:
