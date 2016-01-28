@@ -391,7 +391,7 @@ def limit(iterable, max_samples):
     logger.debug('Limited to {} pairs (max_samples={})'.format(cnt, max_samples))
 
 
-def iterate_minibatches(samples, batch_size):
+def iterate_minibatches(samples, batch_size, keep_incidents=False):
     # Sneek peak at first sample to learn alert length
     sample = next(samples)
     alert1, alert2, mask1, mask2, correlation, incident1, incident2 = sample
@@ -400,24 +400,30 @@ def iterate_minibatches(samples, batch_size):
     masks1 = np.empty_like(inputs1)
     masks2 = np.empty_like(inputs1)
     targets = np.empty((batch_size), dtype=bool)
+    incs1 = np.empty_like(targets, dtype=int)
+    incs2 = np.empty_like(targets, dtype=int)
     i = 0 # index for the arrays
 
-    # Remember to use first samples
-    inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], _, _ = sample
+    # Remember to use first sample
+    inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], incs1[i], incs2[i] = sample
     i += 1
 
     # Use remaining samples to build and yield batches
     batches_produced = 0
     samples_processed = 0
     for sample in samples:
-        inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], _, _ = sample
+        inputs1[i], inputs2[i], masks1[i], masks2[i], targets[i], incs1[i], incs2[i] = sample
         i += 1
         if i == batch_size:
             batches_produced += 1
             samples_processed += i
             i = 0
             logger.debug('Yielding batch, len={}'.format(len(inputs1)))
-            yield inputs1, inputs2, masks1, masks2, targets
+            if keep_incidents:
+                logger.debug('Yielding batch with incident information')
+                yield inputs1, inputs2, masks1, masks2, targets, incs1, incs2
+            else:
+                yield inputs1, inputs2, masks1, masks2, targets
     samples_processed += i
     logger.debug('samples_processed={}, batches_produced={}'.format(
         samples_processed, batches_produced
