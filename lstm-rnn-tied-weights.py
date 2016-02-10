@@ -73,6 +73,7 @@ import time
 import glob
 import json
 import subprocess
+import datetime
 
 import numpy as np
 import theano
@@ -90,6 +91,26 @@ from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit
 from lstm_rnn_tied_weights import iterate_minibatches
 from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
 logger = lstm_rnn_tied_weights.logger
+
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+out_dir = 'output/' + runid
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+out_prefix = out_dir + '/' + runid + '-'
+# info log file
+infofh = logging.FileHandler(out_prefix + 'info.log')
+infofh.setLevel(logging.INFO)
+infofh.setFormatter(logging.Formatter(
+        fmt='%(message)s',
+))
+logger.addHandler(infofh)
+# verbose log file
+vfh = logging.FileHandler(out_prefix + 'verbose.log')
+vfh.setLevel(logging.INFO)
+vfh.setFormatter(logging.Formatter(
+        fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
+))
+logger.addHandler(vfh)
 
 env = dict()
 # git
@@ -580,7 +601,7 @@ plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
 
 plt.tight_layout()
 
-plt.savefig('detection_norm.pdf', bbox_inches='tight')
+plt.savefig(out_prefix+'detection_norm.pdf', bbox_inches='tight')
 
 
 # In[ ]:
@@ -604,7 +625,7 @@ plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
 
 plt.tight_layout()
 
-plt.savefig('detection_notnorm.pdf', bbox_inches='tight')
+plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 
 
 # In[ ]:
