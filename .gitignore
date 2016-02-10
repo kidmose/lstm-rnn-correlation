@@ -59,3 +59,5 @@ target/
 *~
 ipython_notebook_config.py
 /env27/
+/detection_norm.pdf
+/detection_notnorm.pdf

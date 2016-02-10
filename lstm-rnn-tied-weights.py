@@ -279,6 +279,11 @@ prediction_fn = theano.function([input_var, input_var2, mask_var, mask_var2], pr
 logger.debug("Spent {}s compilling.".format(time.time()-t))
 
 
+# In[ ]:
+
+alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
+
+
 # ## Prepare data
 
 # In[ ]:
@@ -312,7 +317,12 @@ def _get_batch(
     ):
         yield sample
 
-incidents = load(glob.glob('data/*.out'))
+incidents = load([
+    'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out',
+#    'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out',
+#    'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out',
+#    'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out',
+])
 incidents = modify(incidents, modifier_fns)
 alerts = pool(incidents)
 
@@ -356,7 +366,20 @@ else:
     raise NotImplementedError("No cut selected")
 
 
-# ## Evaluate
+# ## Load model
+
+# logger.debug('Loading model')
+# with open('model.log') as f:
+#     model = json.loads(f.read())
+# 
+# keys = get_all_params(cos_net)
+# keys = [str(k).replace('[0]','') for k in keys]
+# 
+# params = [np.array(model['model'][k]) for k in keys]
+# set_all_param_values(cos_net, params)
+# 
+
+# ## Train
 
 # In[ ]:
 
@@ -401,6 +424,11 @@ for epoch in range(env['EPOCHS']):
 
     logger.debug('Epoch complete')
 
+
+# ## Test
+
+# In[ ]:
+
 test_err = 0
 test_acc = 0
 test_batches = 0
@@ -425,28 +453,45 @@ logger.debug(model_str)
 logger.info('Completed.')
 
 
+# ## Plot
+
 # In[ ]:
+
+get_ipython().magic(u'matplotlib inline')
 
 error_dict = dict()
 
-def update(ed, pred_float, cor, i):
-    pred = pred_float > 0.5
-    ed[i] = ed.get(i, np.zeros(4, int)) + [
-        pred == cor and pred, # True positive
-        pred == cor and not pred, # True Negative
-        pred != cor and pred, # False positive
-        pred != cor and not pred, # False Negative
-    ]
+land = np.logical_and
+lnot = np.logical_not
+    
+for batch in iterate_minibatches(get_test_batch(), test_max, keep_incidents=True):
+    alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
+    pred_floats = prediction_fn(alerts1, alerts2, masks1, masks2)
 
-for sample in get_test_batch():
-    alert1, alert2, mask1, mask2, cor, i, j = sample
-    pred_float = prediction_fn([alert1], [alert2], [mask1], [mask2])[0]
-    update(error_dict, pred_float, cor, i)
-    update(error_dict, pred_float, cor, j)
+    logger.debug("Calculating error")
+    positive = (pred_floats) > 0.5
+    correct = np.equal(corelations, positive)
+    true_positive = land(correct, positive)
+    true_negative = land(correct, lnot(positive))
+    false_positive = land(lnot(correct), positive)
+    false_negative = land(lnot(correct), lnot(positive))
 
+    logger.debug("Summing errors by incidents")
+    for tp, tn, fp, fn, i, j in zip(
+        true_positive, true_negative,
+        false_positive, false_negative,
+        iz, js
+    ):
+        error_dict[i] = error_dict.get(i, np.zeros(4)) + np.array([tp, tn, fp, fn])
+        error_dict[j] = error_dict.get(j, np.zeros(4)) + np.array([tp, tn, fp, fn])
+        
 (labels, errors) = zip(*sorted(list(error_dict.items())))
 errors = np.array(errors)
 errors_norm = errors / errors.sum(axis=1)[:, None]
+
+
+
+# In[ ]:
 
 import matplotlib.pyplot as plt
 
@@ -480,7 +525,153 @@ plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
 
 plt.tight_layout()
 
-plt.savefig('foo.pdf', bbox_inches='tight')
+plt.savefig('detection_norm.pdf', bbox_inches='tight')
+
+
+# In[ ]:
+
+for i, (typ, color) in enumerate(zip(types, colors)):
+    rect = plt.bar(
+        index + bar_width*i,
+        errors[:,i],
+        bar_width,
+        alpha=0.8,
+        color=color,
+        error_kw={'ecolor': '0.3'},
+        label=typ,
+    )
+
+plt.xlabel('Incidents')
+plt.ylabel('Rate')
+plt.xticks(index + bar_width, labels)
+plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=2, mode="expand", borderaxespad=0.)
+
+plt.tight_layout()
+
+plt.savefig('detection_notnorm.pdf', bbox_inches='tight')
+
+
+# In[ ]:
+
+sys.exit(0)
+
+
+# ## Clustering
+
+# In[ ]:
+
+X = alert_to_vector(alerts1, masks1)
+y = iz
+
+
+# In[ ]:
+
+from sklearn.cluster import DBSCAN
+
+def my_cluster_eval(y, y_pred, X, n_clusters):
+    print('Estimated number of clusters: %d' % n_clusters_)
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(y, y_pred))
+    print("Completeness: %0.3f" % metrics.completeness_score(y, y_pred))
+    print("V-measure: %0.3f" % metrics.v_measure_score(y, y_pred))
+    print("Adjusted Rand Index: %0.3f"
+          % metrics.adjusted_rand_score(y, y_pred))
+    print("Adjusted Mutual Information: %0.3f"
+          % metrics.adjusted_mutual_info_score(y, y_pred))
+    print("Silhouette Coefficient: %0.3f"
+          % metrics.silhouette_score(X, y_pred))
+    
+for eps in [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30]:
+    for min_samples in [1, 3, 10, 30]:
+        db = DBSCAN(eps=0.01, min_samples=3).fit(X)
+        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+        y_pred = db.labels_
+        # Number of clusters in labels, ignoring noise if present.
+        n_clusters = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+        
+        logger.info(
+            "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
+                eps, min_samples, n_clusters, metrics.homogeneity_score(y, y_pred)
+            ))
+
+
+# In[ ]:
+
+
+
+
+
+my_cluster_eval(y, y_pred, X, n_clusters_)
+
+
+# In[ ]:
+
+np.unique(y_pred, return_counts=True)
+
+
+# In[ ]:
+
+# Assign label to clusters according which incident has the largest part of its alert in the given cluster
+# weight to handle class skew
+weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
+allocs = zip(y, y_pred)
+
+from collections import Counter
+c = Counter(map(tuple, allocs))
+
+mapper = dict()
+for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]):
+    mapper[cluster] = incident
+
+
+# In[ ]:
+
+# misclassification matrix
+y_pred_inc = np.array([mapper[el] for el in y_pred])
+from sklearn import metrics
+cm = metrics.confusion_matrix(y, y_pred_inc)
+
+cm
+
+
+# In[ ]:
+
+(((cm+1.0e-16) / cm.sum(axis=0))*100)
+
+
+# In[ ]:
+
+# Map any cluster to the incident that it is most often put in
+
+mapping = sorted(mapping)
+
+
+# In[ ]:
+
+mapper = dict()
+for _, m in mapping:
+    mapper[m[0]] = m[1]
+    
+y_pred = np.array([mapper[el] for el in y_pred])
+
+print(mapper.keys())
+print(mapper.values())
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
+
+
+# In[ ]:
+
+zip(*np.unique(y, return_counts=True))
 
 
 # In[ ]:
