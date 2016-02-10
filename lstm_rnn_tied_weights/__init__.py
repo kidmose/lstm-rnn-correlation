@@ -297,43 +297,8 @@ def split(
         for start, end
         in zip (idxs[:-1], idxs[1:])))
 
-def cross_join(
-        alerts,
-        offset=0,
-):
-    """
-    [BUGGED] Cross join list of alerts with self and track if incident is the same.
 
-    Applies a deterministic shuffle on output.
-    """
-    alerts, masks, incidents = encode(alerts)
-
-    n = len(alerts)
-    assert n == len(masks)
-    assert n == len(incidents)
-    assert alerts.shape == masks.shape
-
-    def produce_one_pair(i, j):
-        return (
-            alerts[i],
-            alerts[j],
-            masks[i],
-            masks[j],
-            incidents[i] == incidents[j],
-            incidents[i],
-            incidents[j],
-        )
-
-    logger.info(
-        "Crossjoin will produce {} pairs from {} alerts, offset with {}"
-        .format(n**2, n, offset)
-    )
-    for cnt, (i, j) in enumerate(cross_join_impl_python(n, offset)):
-        yield produce_one_pair(i, j)
-    logger.debug('Crossjoin yielded {} pairs of alerts'.format(cnt+1))
-
-
-def cross_join_impl_forfor(n, offset):
+def cross_join_forfor(n, offset):
     """
     [BUGGED] Cross join implemented with two nested for loops.
 
@@ -343,6 +308,8 @@ def cross_join_impl_forfor(n, offset):
     First n pairs will have the same alert in position one,
     next n pairs also and so on.
     """
+    logger.info("Cross join with two for loops is used")
+    logger.warn("Using buggy implementation: Not truly random")
     # Shuffle to sample across all alerts in a predictive fashion
     np.random.seed(1131662768)
     i_idxs = np.arange(n)
@@ -363,23 +330,62 @@ def cross_join_impl_forfor(n, offset):
             yield (i, j)
 
 
-def cross_join_impl_python(n, offset):
+def cross_join_python(n, offset):
     """
     Cross join implemented with python core methods.
 
     Efficient in time, requires list of n**2 index pairs in memory.
     """
+    logger.info("Cross join with python shuffle is used")
+
     idxs = [(i,j) for i in range(n) for j in range(n)]
     random.seed(1131662768)
     random.shuffle(idxs)
     for ij in idxs[offset:]:
         yield ij
 
-def cross_join_impl_rand_samp(n, offset):
+
+def cross_join_rand_samp(n, offset):
     """
     [NotImplemented] Cross joing implemented with random sampling.
     """
     raise NotImplementedError("Please see recent commit for how this can be done")
+
+
+def cross_join(
+        alerts,
+        offset=0,
+        implementation=cross_join_python,
+):
+    """
+    Creates pairs from provided alerts with the provided implementation.
+    """
+    alerts, masks, incidents = encode(alerts)
+
+    n = len(alerts)
+    assert n == len(masks)
+    assert n == len(incidents)
+    assert alerts.shape == masks.shape
+
+    def produce_one_pair(i, j):
+        return (
+            alerts[i],
+            alerts[j],
+            masks[i],
+            masks[j],
+            incidents[i] == incidents[j],
+            incidents[i],
+            incidents[j],
+        )
+
+    logger.info(
+        "Making pairs with {}, using {} alerts. Result is offset with {}"
+        .format(implementation, n, offset)
+    )
+    for cnt, (i, j) in enumerate(implementation(n, offset)):
+        yield produce_one_pair(i, j)
+    logger.info('Sucesfully made {} pairs of alerts (implementation empty)'.format(cnt+1))
+
 
 def limit(iterable, max_samples):
     logger.debug('Limitting to max_samples={}'.format(max_samples))
