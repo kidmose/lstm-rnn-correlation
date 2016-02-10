@@ -333,9 +333,9 @@ incidents = load([
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-45/botnet-capture-20110815-rbot-dos.pcap.shifted.out', #	5
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-118-1/2015-04-20_capture-win5.pcap.shifted.out', #	6
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-92/192.168.3.104-eldorado2-1.pcap.shifted.out', #	6
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-48/botnet-capture-20110816-sogou.pcap.shifted.out', #	10
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-60/2014-03-12_win20.pcap.shifted.out', #	12
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-11/capture-win19.pcap.shifted.out', #	13
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-48/botnet-capture-20110816-sogou.pcap.shifted.out', #	10
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-60/2014-03-12_win20.pcap.shifted.out', #	12
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-11/capture-win19.pcap.shifted.out', #	13
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-102/capture-win2.pcap.shifted.out', #	13
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-90/192.168.3.104-unvirus.pcap.shifted.out', #	18
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-134-1/2015-10-11_win3.pcap.shifted.out', #	20
@@ -357,10 +357,10 @@ incidents = load([
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-1/2015-10-23_win11.pcap.shifted.out', #	839
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-42/botnet-capture-20110810-neris.pcap.shifted.out', #	865
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-55/capture-win13.pcap.shifted.out', #	954
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out', #	1354
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out', #	1548
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out', #	1704
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out', #	1785
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out', #	1354
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out', #	1548
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out', #	1704
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out', #	1785
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-54/botnet-capture-20110815-fast-flux-2.pcap.shifted.out', #	2015
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-100/2014-12-20_capture-win5.pcap.shifted.out', #	2685
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-35-1/2014-01-31_capture-win7.pcap.shifted.out', #	3199
