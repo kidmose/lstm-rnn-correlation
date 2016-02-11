@@ -153,6 +153,9 @@ env['VICTIM_IP'] = '147.32.84.165'
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
 env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
 
+# Load model weights from file, don't train?
+env['MODEL'] = os.environ.get('MODEL', None)
+
 logger.info("Starting.")
 logger.info("env: " + str(env))
 for k in sorted(env.keys()):
@@ -438,24 +441,6 @@ elif env.get('CUT_PAIR', False):
 else:
     raise NotImplementedError("No cut selected")
 
-
-# ## Load model
-
-# logger.debug('Loading model')
-# with open('model.log') as f:
-#     model = json.loads(f.read())
-# 
-# keys = get_all_params(cos_net)
-# keys = [str(k).replace('[0]','') for k in keys]
-# 
-# params = [np.array(model['model'][k]) for k in keys]
-# set_all_param_values(cos_net, params)
-# 
-
-# ## Train
-
-# In[ ]:
-
 a1, a2, m1, m2, cor, inc1, inc2 = range(7)
 for cut, batch_fn in [
     ('training', get_train_batch),
@@ -467,35 +452,58 @@ for cut, batch_fn in [
     logger.info('incident 1:\n'+break_down_data([p[inc1] for p in batch_fn()]))
     logger.info('incident 2:\n'+break_down_data([p[inc2] for p in batch_fn()])+'\n')
 
-logger.info("Starting training...")
-for epoch in range(env['EPOCHS']):
-    train_err = 0
-    train_batches = 0
-    start_time = time.time()
-    for batch in iterate_minibatches(get_train_batch(), env['BATCH_SIZE']):
-        train_err += train_fn(*batch)
-        train_batches += 1
-        logger.debug('Batch complete')
 
-    #if (epoch+1) % (env['EPOCHS']/10) == 0:
-    if True:
-        val_err = 0
-        val_acc = 0
-        val_batches = 0
-        for batch in iterate_minibatches(get_val_batch(), env['BATCH_SIZE']):
-            err, acc = val_fn(*batch)
-            val_err += err
-            val_acc += acc
-            val_batches += 1
+# ## Load model
 
-        logger.info("Epoch {} of {} took {:.3f}s".format(
-            epoch + 1, env['EPOCHS'], time.time() - start_time))
-        logger.info("  training loss:\t\t{:.20f}".format(train_err / train_batches))
-        logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
-        logger.info("  validation accuracy:\t\t{:.2f} %".format(
-            val_acc / val_batches * 100))
+# In[ ]:
 
-    logger.debug('Epoch complete')
+if env['MODEL']:
+    logger.info('Loading model from {}'.format(env['MODEL']))
+    with open(env['MODEL']) as f:
+        model = json.loads(f.read())
+
+    # Order accoording to current model (JSON might reorder)
+    params = get_all_params(cos_net)
+    values = [np.array(model['model'][p.name]) for p in params]
+
+    set_all_param_values(cos_net, values)
+
+
+# ## Train
+
+# In[ ]:
+
+if not env['MODEL']:
+    logger.info("Starting training...")
+    for epoch in range(env['EPOCHS']):
+        train_err = 0
+        train_batches = 0
+        start_time = time.time()
+        for batch in iterate_minibatches(get_train_batch(), env['BATCH_SIZE']):
+            train_err += train_fn(*batch)
+            train_batches += 1
+            logger.debug('Batch complete')
+
+        #if (epoch+1) % (env['EPOCHS']/10) == 0:
+        if True:
+            val_err = 0
+            val_acc = 0
+            val_batches = 0
+            for batch in iterate_minibatches(get_val_batch(), env['BATCH_SIZE']):
+                err, acc = val_fn(*batch)
+                val_err += err
+                val_acc += acc
+                val_batches += 1
+
+            logger.info("Epoch {} of {} took {:.3f}s".format(
+                epoch + 1, env['EPOCHS'], time.time() - start_time))
+            logger.info("  training loss:\t\t{:.20f}".format(train_err / train_batches))
+            logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
+            logger.info("  validation accuracy:\t\t{:.2f} %".format(
+                val_acc / val_batches * 100))
+
+        logger.debug('Epoch complete')
+    logger.info('Training complete')
 
 
 # ## Test
@@ -516,14 +524,17 @@ logger.info("  test loss:\t\t\t{:.6f}".format(test_err / test_batches))
 logger.info("  test accuracy:\t\t{:.2f} %".format(
     test_acc / test_batches * 100))
 
+
+# ## Dump model
+
+# In[ ]:
+
+model_file = out_prefix + 'model.json'
 model = {'model':{str(p): v.tolist() for p, v in zip(get_all_params(cos_net), get_all_param_values(cos_net))}}
-model_str = json.dumps(model)
-logger.debug('Dumping model parameters:')
-logger.debug(model_str)
-
-
-
-logger.info('Completed.')
+logger.info('Saving model to {}'.format(model_file))
+with open(model_file, 'w') as f:
+    f.write(json.dumps(model))
+logger.info('Model saved')
 
 
 # ## Plot
