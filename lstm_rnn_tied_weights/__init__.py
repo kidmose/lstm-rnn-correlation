@@ -42,13 +42,13 @@ def get_logger(name):
         ch.setFormatter(logging.Formatter())
         logger.addHandler(ch)
 
-        # File
-        fh = logging.FileHandler(__name__+'.log')
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(logging.Formatter(
-            fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
-        ))
-        logger.addHandler(fh)
+        # # File
+        # fh = logging.FileHandler(__name__+'.log')
+        # fh.setLevel(logging.DEBUG)
+        # fh.setFormatter(logging.Formatter(
+        #     fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
+        # ))
+        # logger.addHandler(fh)
 
     return logger
 
