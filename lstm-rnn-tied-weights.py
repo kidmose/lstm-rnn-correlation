@@ -106,7 +106,7 @@ infofh.setFormatter(logging.Formatter(
 logger.addHandler(infofh)
 # verbose log file
 vfh = logging.FileHandler(out_prefix + 'verbose.log')
-vfh.setLevel(logging.INFO)
+vfh.setLevel(logging.DEBUG)
 vfh.setFormatter(logging.Formatter(
         fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
 ))
