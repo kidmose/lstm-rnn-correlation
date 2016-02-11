@@ -74,6 +74,7 @@ import glob
 import json
 import subprocess
 import datetime
+import socket
 
 import numpy as np
 import theano
@@ -92,7 +93,7 @@ from lstm_rnn_tied_weights import iterate_minibatches
 from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
 logger = lstm_rnn_tied_weights.logger
 
-runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
 out_dir = 'output/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
