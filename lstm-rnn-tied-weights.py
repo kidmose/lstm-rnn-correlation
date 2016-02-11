@@ -530,6 +530,13 @@ logger.info('Completed.')
 
 # In[ ]:
 
+# might, might not have x available
+try:
+    os.environ['DISPLAY']
+except KeyError:
+    import matplotlib
+    matplotlib.use('Agg')
+# might, might not be notebook
 try:
     get_ipython().magic(u'matplotlib inline')
 except NameError:
