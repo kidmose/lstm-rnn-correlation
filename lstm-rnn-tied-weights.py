@@ -742,7 +742,7 @@ for eps, min_samples, label in zip(
 
 plt.tight_layout()
 
-plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
+plt.savefig(out_prefix+'clustering_parameters.pdf', bbox_inches='tight')
 
 
 # In[ ]:
