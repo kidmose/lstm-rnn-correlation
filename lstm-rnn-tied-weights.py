@@ -77,6 +77,7 @@ import datetime
 import socket
 
 import numpy as np
+import scipy as sp
 import theano
 import theano.tensor as T
 
@@ -442,6 +443,9 @@ elif env.get('CUT_PAIR', False):
 else:
     raise NotImplementedError("No cut selected")
 
+
+# In[ ]:
+
 a1, a2, m1, m2, cor, inc1, inc2 = range(7)
 for cut, batch_fn in [
     ('training', get_train_batch),
@@ -612,7 +616,7 @@ for i, (typ, color) in enumerate(zip(types, colors)):
         label=typ,
     )
 
-plt.xlabel('Incidents')
+plt.xlabel('Incident')
 plt.ylabel('Rate')
 plt.xticks(index + bar_width, labels)
 plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
@@ -636,11 +640,105 @@ for i, (typ, color) in enumerate(zip(types, colors)):
         label=typ,
     )
 
-plt.xlabel('Incidents')
-plt.ylabel('Rate')
+plt.xlabel('Incident')
+plt.ylabel('Count (Pairs)')
 plt.xticks(index + bar_width, labels)
 plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
            ncol=2, mode="expand", borderaxespad=0.)
+
+plt.tight_layout()
+
+plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
+
+
+# ## Clustering
+
+# In[ ]:
+
+from sklearn.cluster import DBSCAN
+from sklearn import metrics
+
+logger.info("Clustering of alerts")
+CLUSTER_ALERTS = 10
+batch = next(iterate_minibatches(
+        get_test_batch(),
+        CLUSTER_ALERTS,
+        keep_incidents=True
+))
+
+alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
+X = alert_to_vector(alerts1, masks1)
+y = iz
+logger.info("Breakdown of labels:\n"+ break_down_data(y))
+
+logger.info("Precomputing distances")
+precomp_dist = np.zeros(shape=(len(X), len(X)))
+for i in range(len(X)):
+    for i in range(len(X)):
+        precomp_dist[i, j] = sp.spatial.distance.cosine(X[i], X[j])
+
+logger.info("Running clustering algorithm")
+epss = np.array([0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30])
+min_sampless = np.array([1, 3, 10, 30])
+homogenity = np.zeros(shape=(len(epss), len(min_sampless)))
+n_clusters = np.zeros_like(homogenity, dtype=int)
+
+for i, eps in enumerate(epss):
+    for j, min_samples in enumerate(min_sampless):
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+        y_pred = db.labels_
+        # Number of clusters in labels, ignoring noise if present.
+        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
+        
+        logger.debug(
+            "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
+                eps, min_samples, n_clusters[i,j], homogenity[i,j],
+            ))
+        
+
+
+# In[ ]:
+
+fig, ax = plt.subplots()
+ax.set_title('Clustering performance')
+
+ax.set_yscale('log')
+ax.set_yticklabels(min_sampless)
+ax.set_yticks(min_sampless)
+ax.set_ylim(min_sampless[0]/3, min_sampless[-1]*3)
+
+ax.set_xscale('log')
+ax.set_xlabel('eps')
+ax.set_xticklabels(epss)
+ax.set_xticks(epss)
+ax.set_xlim(epss[0]/3,epss[-1]*3)
+
+coords = np.array([
+        (i, j)
+        for i in range(n_clusters.shape[0])
+        for j in range(n_clusters.shape[1])
+    ])
+
+plt.scatter(
+    epss[coords[:,0]],
+    min_sampless[coords[:,1]],
+    homogenity[coords[:,0], coords[:,1]]*1000,
+    c='white',
+)
+
+for eps, min_samples, label in zip(
+    epss[coords[:,0]],
+    min_sampless[coords[:,1]],
+    n_clusters[coords[:,0], coords[:,1]],
+):
+    plt.annotate(
+        label, 
+        xy = (eps, min_samples), xytext = (0, 0),
+        textcoords = 'offset points', ha = 'center', va = 'center',
+    )
 
 plt.tight_layout()
 
@@ -652,17 +750,94 @@ plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 sys.exit(0)
 
 
-# ## Clustering
+# In[ ]:
+
+eps = 0.1
+min_samples = 1
+
+db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+core_samples_mask[db.core_sample_indices_] = True
+y_pred = db.labels_
+# Number of clusters in labels, ignoring noise if present.
+n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
+
+logger.info(
+    "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
+        eps, min_samples, n_clusters[i,j], homogenity[i,j],
+    ))
+
+logger.info("Incident(i) to cluster(j) \"confusion matrix\":")
+inc_to_clust = metrics.confusion_matrix(y, y_pred)
+logger.info(inc_to_clust)
+
 
 # In[ ]:
 
-X = alert_to_vector(alerts1, masks1)
-y = iz
+# Assign label to clusters according which incident has the largest part of its alert in the given cluster
+# weight to handle class skew
+weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
+allocs = zip(y, y_pred)
+
+from collections import Counter
+c = Counter(map(tuple, allocs))
+
+mapper = dict()
+for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]):
+    mapper[cluster] = incident
+
+# misclassification matrix
+y_pred_inc = np.array([mapper[el] for el in y_pred])
+from sklearn import metrics
+metrics.confusion_matrix(y, y_pred_inc)
 
 
 # In[ ]:
 
-from sklearn.cluster import DBSCAN
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+get_ipython().magic(u'pinfo2 metrics.confusion_matrix')
+
+
+# In[ ]:
+
+m, n = np.meshgrid
+
+
+# In[ ]:
+
+
+db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+core_samples_mask[db.core_sample_indices_] = True
+y_pred = db.labels_
+# Number of clusters in labels, ignoring noise if present.
+n_clusters = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+
+print(
+    "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
+        eps, min_samples, n_clusters, metrics.homogeneity_score(y, y_pred)
+    ))
+
+
+# In[ ]:
+
+
+
 
 def my_cluster_eval(y, y_pred, X, n_clusters):
     print('Estimated number of clusters: %d' % n_clusters_)
@@ -678,7 +853,7 @@ def my_cluster_eval(y, y_pred, X, n_clusters):
     
 for eps in [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30]:
     for min_samples in [1, 3, 10, 30]:
-        db = DBSCAN(eps=0.01, min_samples=3).fit(X)
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
         core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
         core_samples_mask[db.core_sample_indices_] = True
         y_pred = db.labels_
@@ -707,27 +882,12 @@ np.unique(y_pred, return_counts=True)
 
 # In[ ]:
 
-# Assign label to clusters according which incident has the largest part of its alert in the given cluster
-# weight to handle class skew
-weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
-allocs = zip(y, y_pred)
 
-from collections import Counter
-c = Counter(map(tuple, allocs))
-
-mapper = dict()
-for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]):
-    mapper[cluster] = incident
 
 
 # In[ ]:
 
-# misclassification matrix
-y_pred_inc = np.array([mapper[el] for el in y_pred])
-from sklearn import metrics
-cm = metrics.confusion_matrix(y, y_pred_inc)
 
-cm
 
 
 # In[ ]:
