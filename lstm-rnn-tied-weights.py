@@ -76,6 +76,8 @@ import subprocess
 import datetime
 import socket
 
+from operator import itemgetter
+
 import numpy as np
 import scipy as sp
 import theano
@@ -89,7 +91,7 @@ from lasagne.objectives import *
 
 import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
-from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit
+from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, break_down_data
 from lstm_rnn_tied_weights import iterate_minibatches
 from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
 logger = lstm_rnn_tied_weights.logger
@@ -317,15 +319,6 @@ alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 # In[ ]:
 
-def break_down_data(labels):
-    u, c = np.unique(labels, return_counts=True)
-    c_norm = (c/sum(c))*100
-    result = str()
-    result += 'Label: '+('{: >10}'*len(u)).format(*u) + '\n'
-    result += 'Count: '+('{: >10}'*len(u)).format(*c) + '\n'
-    result += 'Norm.: '+('{: >9.2f}%'*len(u)).format(*c_norm)
-    return result
-
 # If/what to mask out or modify
 modifier_fns = []
 if env['MASK_IP']:
@@ -455,10 +448,14 @@ for cut, batch_fn in [
     ('validation', get_val_batch),
     ('testing', get_test_batch),
 ]:
-    logger.info('Breakdown of {} data;\n'.format(cut))
-    logger.info('correlation:\n'+break_down_data([p[cor] for p in batch_fn()]))
-    logger.info('incident 1:\n'+break_down_data([p[inc1] for p in batch_fn()]))
-    logger.info('incident 2:\n'+break_down_data([p[inc2] for p in batch_fn()])+'\n')
+    logger.info(
+        'Breakdown of {} data;\n'.format(cut) +
+        break_down_data(batch_fn(), [
+                ('correlation', itemgetter(cor)),
+                ('incident 1', itemgetter(inc1)),
+                ('incident 2', itemgetter(inc2)),
+            ])
+    )
 
 
 # ## Load model

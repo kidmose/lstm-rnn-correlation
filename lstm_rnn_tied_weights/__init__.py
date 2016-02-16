@@ -487,3 +487,26 @@ def uniquify_victim(incidents, oldip):
         (incidentid, replace_re_in_alerts(alerts, oldip, ips[incidentid]))
         for incidentid, alerts in incidents
     ]
+def break_down_data(
+    items,
+    extractors = [('label', lambda item: item),]
+):
+    extractorsd = {label: ext for (label, ext) in extractors}
+    # results as 2 layer dict {extractor : {label value : count}}
+    results = {e: dict() for e in extractorsd.keys()}
+    # do the counting
+    for item in items:
+        for ext, cnt_dict in results.items():
+            value = extractorsd[ext](item)
+            cnt_dict[value] = cnt_dict.get(value, 0) + 1
+    # Format result
+    retval = str()
+    for ext_label in [ext_label for (ext_label, ext) in extractors] :
+        label, cnt = zip(*results[ext_label].items())
+        cnt = np.array(cnt)
+        cnt_norm = cnt/float(sum(cnt))*100
+        retval += "Breakdown of {}:\n".format(ext_label)
+        retval += 'Label: '+('{: >10}'*len(label)).format(*label) + '\n'
+        retval += 'Count: '+('{: >10}'*len(label)).format(*cnt) + '\n'
+        retval += 'Norm.: '+('{: >9.2f}%'*len(label)).format(*cnt_norm) + '\n'
+    return retval
