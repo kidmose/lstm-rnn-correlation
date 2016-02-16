@@ -26,6 +26,7 @@ import theano.tensor as T
 import time
 import math
 import numpy as np
+from sklearn.utils.extmath import cartesian
 import logging
 import random
 import netaddr
@@ -345,6 +346,21 @@ def cross_join_python(n, offset):
         yield ij
 
 
+def cross_join_numpy(n, offset):
+    """
+    Cross join implemented with numpy methods.
+
+    Efficient in time, requires list of n**2 index pairs in memory.
+    """
+    logger.info("Cross join with numpy shuffle is used")
+
+    idxs = cartesian([np.arange(n), np.arange(n)])
+    np.random.seed(1131662768)
+    np.random.shuffle(idxs)
+    for ij in idxs[offset:]:
+        yield ij
+
+
 def cross_join_rand_samp(n, offset):
     """
     [NotImplemented] Cross joing implemented with random sampling.
@@ -355,7 +371,7 @@ def cross_join_rand_samp(n, offset):
 def cross_join(
         alerts,
         offset=0,
-        implementation=cross_join_python,
+        implementation=cross_join_numpy,
 ):
     """
     Creates pairs from provided alerts with the provided implementation.
