@@ -140,7 +140,7 @@ elif 'alert' in env['CUT'].lower():
 elif 'pair' in env['CUT'].lower():
     env['CUT_PAIR'] = True
 else:
-    raise NotImplementedError("Pleas set CUT={none|inc|alert|pair} (CUT={})".format(env['CUT']))
+    raise NotImplementedError("Please set CUT={none|inc|alert|pair} (CUT={})".format(env['CUT']))
 
 # Data control
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 1000000))
@@ -157,6 +157,9 @@ env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
 
 # Load model weights from file, don't train?
 env['MODEL'] = os.environ.get('MODEL', None)
+
+# Clustering
+env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 
 logger.info("Starting.")
 logger.info("env: " + str(env))
@@ -659,10 +662,9 @@ from sklearn.cluster import DBSCAN
 from sklearn import metrics
 
 logger.info("Clustering of alerts")
-CLUSTER_ALERTS = 10
 batch = next(iterate_minibatches(
         get_test_batch(),
-        CLUSTER_ALERTS,
+        env['CLUSTER_SAMPLES'],
         keep_incidents=True
 ))
 
@@ -735,7 +737,7 @@ for eps, min_samples, label in zip(
     n_clusters[coords[:,0], coords[:,1]],
 ):
     plt.annotate(
-        label, 
+        label,
         xy = (eps, min_samples), xytext = (0, 0),
         textcoords = 'offset points', ha = 'center', va = 'center',
     )
