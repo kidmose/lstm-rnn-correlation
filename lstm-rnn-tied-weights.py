@@ -82,6 +82,7 @@ import numpy as np
 import scipy as sp
 import theano
 import theano.tensor as T
+import matplotlib
 
 import lasagne
 from lasagne.layers import *
@@ -515,6 +516,7 @@ if not env['MODEL']:
 
 # In[ ]:
 
+"""
 test_err = 0
 test_acc = 0
 test_batches = 0
@@ -528,6 +530,7 @@ logger.info("Final results:")
 logger.info("  test loss:\t\t\t{:.6f}".format(test_err / test_batches))
 logger.info("  test accuracy:\t\t{:.2f} %".format(
     test_acc / test_batches * 100))
+"""
 
 
 # ## Dump model
@@ -550,7 +553,6 @@ logger.info('Model saved')
 try:
     os.environ['DISPLAY']
 except KeyError:
-    import matplotlib
     matplotlib.use('Agg')
 # might, might not be notebook
 try:
@@ -563,7 +565,7 @@ error_dict = dict()
 land = np.logical_and
 lnot = np.logical_not
     
-for batch in iterate_minibatches(get_test_batch(), test_max, keep_incidents=True):
+for batch in iterate_minibatches(get_train_batch(), test_max, keep_incidents=True):
     alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
     pred_floats = prediction_fn(alerts1, alerts2, masks1, masks2)
 
@@ -651,7 +653,7 @@ plt.tight_layout()
 plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 
 
-# ## Clustering
+# # Clustering - train data
 
 # In[ ]:
 
@@ -660,7 +662,7 @@ from sklearn import metrics
 
 logger.info("Clustering of alerts")
 batch = next(iterate_minibatches(
-        get_test_batch(),
+        get_train_batch(),
         env['CLUSTER_SAMPLES'],
         keep_incidents=True
 ))
@@ -673,75 +675,219 @@ logger.info("Breakdown of labels:\n"+ break_down_data(y))
 logger.info("Precomputing distances")
 precomp_dist = np.zeros(shape=(len(X), len(X)))
 for i in range(len(X)):
-    for i in range(len(X)):
+    for j in range(len(X)):
         precomp_dist[i, j] = sp.spatial.distance.cosine(X[i], X[j])
-
-logger.info("Running clustering algorithm")
-epss = np.array([0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30])
-min_sampless = np.array([1, 3, 10, 30])
-homogenity = np.zeros(shape=(len(epss), len(min_sampless)))
-n_clusters = np.zeros_like(homogenity, dtype=int)
-
-for i, eps in enumerate(epss):
-    for j, min_samples in enumerate(min_sampless):
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        y_pred = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
-        
-        logger.debug(
-            "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
-                eps, min_samples, n_clusters[i,j], homogenity[i,j],
-            ))
-        
 
 
 # In[ ]:
 
-fig, ax = plt.subplots()
-ax.set_title('Clustering performance')
+logger.info("Running clustering algorithm")
+epss = np.array([0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1])
+min_sampless = np.array([1, 3, 10, 30])
+homogenity = np.zeros(shape=(len(epss), len(min_sampless)))
+n_clusters = np.zeros_like(homogenity, dtype=int)
+f1 = np.zeros_like(homogenity)
+noise = np.zeros_like(homogenity, dtype=int)
+cl_model = np.zeros_like(homogenity).tolist()
+mapper = np.zeros_like(homogenity).tolist()
 
-ax.set_yscale('log')
-ax.set_yticklabels(min_sampless)
-ax.set_yticks(min_sampless)
-ax.set_ylim(min_sampless[0]/3, min_sampless[-1]*3)
+def build_cluster_to_incident_mapper(y, y_pred):
+    # Assign label to clusters according which incident has the largest part of its alert in the given cluster
+    # weight to handle class skew
+    weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
+    allocs = zip(y, y_pred)
 
-ax.set_xscale('log')
-ax.set_xlabel('eps')
-ax.set_xticklabels(epss)
-ax.set_xticks(epss)
-ax.set_xlim(epss[0]/3,epss[-1]*3)
+    from collections import Counter
+    c = Counter(map(tuple, allocs))
 
-coords = np.array([
-        (i, j)
-        for i in range(n_clusters.shape[0])
-        for j in range(n_clusters.shape[1])
+    mapper = dict()
+    for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]):
+        mapper[cluster] = incident
+
+    mapper[-1] = -1 # Don't rely on what DBSCAN deems as noise
+    return mapper
+
+for i, eps in enumerate(epss):
+    for j, min_samples in enumerate(min_sampless):
+        cl_model[i][j] = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+        y_pred = cl_model[i][j].labels_
+        # Number of clusters in labels, ignoring noise if present.
+        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+        noise[i,j] = sum(y_pred == -1)
+        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
+        
+        mapper[i][j] = build_cluster_to_incident_mapper(y, y_pred)
+        y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
+        f1[i,j] = metrics.f1_score(y, y_pred_inc, average='weighted')
+
+        logger.info(
+            "DBSCAN with (eps, min_samples)=({:1.0e},{:>2d}), n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
+                eps, min_samples, n_clusters[i,j], homogenity[i,j], f1[i,j], noise[i,j],
+            ))
+
+
+# In[ ]:
+
+def param_plot_prepare(
+    title,
+):
+    fig, ax = plt.subplots()
+    ax.set_title(title)
+
+    ax.set_yscale('log')
+    ax.set_ylabel('min_samples')
+    ax.set_yticklabels(min_sampless)
+    ax.set_yticks(min_sampless)
+    ax.set_ylim(min_sampless[0]/3, min_sampless[-1]*3)
+
+    ax.set_xscale('log')
+    ax.set_xlabel('eps')
+    ax.set_xticklabels(epss)
+    ax.set_xticks(epss)
+    ax.set_xlim(epss[0]/3,epss[-1]*3)
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%.0e'))
+
+
+def param_plot_scatter(
+    data,
+    xcoords,
+    ycoords,
+
+):
+    # scaling
+    data = np.copy(data)
+    data = data-data.min() # Range to start at zero
+    data = data/data.max() # Range to end at one
+
+    coords = np.array([
+            (i, j)
+            for i in range(data.shape[0])
+            for j in range(data.shape[1])
     ])
 
-plt.scatter(
-    epss[coords[:,0]],
-    min_sampless[coords[:,1]],
-    homogenity[coords[:,0], coords[:,1]]*1000,
-    c='white',
-)
-
-for eps, min_samples, label in zip(
-    epss[coords[:,0]],
-    min_sampless[coords[:,1]],
-    n_clusters[coords[:,0], coords[:,1]],
-):
-    plt.annotate(
-        label,
-        xy = (eps, min_samples), xytext = (0, 0),
-        textcoords = 'offset points', ha = 'center', va = 'center',
+    plt.scatter(
+        xcoords[coords[:,0]],
+        ycoords[coords[:,1]],
+        data[coords[:,0], coords[:,1]]*1000,
+        c='white',
+        alpha=0.5
     )
 
-plt.tight_layout()
 
-plt.savefig(out_prefix+'clustering_parameters.pdf', bbox_inches='tight')
+def param_plot_annotate(
+    data,
+    xcoords,
+    ycoords,
+    fmt='{}',
+):
+    coords = np.array([
+            (i, j)
+            for i in range(data.shape[0])
+            for j in range(data.shape[1])
+    ])
+        
+    for x, y, label in zip(
+        xcoords[coords[:,0]],
+        ycoords[coords[:,1]],
+        data[coords[:,0], coords[:,1]],
+    ):
+        plt.annotate(
+            fmt.format(label),
+            xy = (x, y), xytext = (0, 0),
+            textcoords = 'offset points', ha = 'center', va = 'center',
+        )
+
+
+def param_plot_save(filename):
+    plt.tight_layout()
+    plt.savefig(filename, bbox_inches='tight')
+
+
+# In[ ]:
+
+param_plot_prepare('Cluster homogenity by DBSCAN parameters')
+param_plot_scatter(homogenity, epss, min_sampless)
+param_plot_annotate(homogenity, epss, min_sampless, fmt='{:.2f}')
+param_plot_save(out_prefix+'cluster_homogenity.pdf')
+
+param_plot_prepare('Cluster count by DBSCAN parameters')
+param_plot_scatter(n_clusters, epss, min_sampless)
+param_plot_annotate(n_clusters, epss, min_sampless)
+param_plot_save(out_prefix+'cluster_count.pdf')
+
+param_plot_prepare('Detection performance (F1) by DBSCAN parameters')
+param_plot_scatter(f1, epss, min_sampless)
+param_plot_annotate(f1, epss, min_sampless, fmt='{:.2f}')
+param_plot_save(out_prefix+'cluster_detection.pdf')
+
+
+
+# # Clustering - validation data
+
+# In[ ]:
+
+logger.info("Applying clusters to validation data")
+batch = next(iterate_minibatches(
+        get_val_batch(),
+        env['CLUSTER_SAMPLES'],
+        keep_incidents=True
+))
+
+alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
+X = alert_to_vector(alerts1, masks1)
+y = iz
+logger.info("Breakdown of labels:\n"+ break_down_data(y))
+
+def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
+    # Result is noise by default
+    y_new = np.ones(shape=len(X_new), dtype=int)*-1 
+
+    # Iterate all input samples for a label
+    for j, x_new in enumerate(X_new):
+        # Find a core sample closer than EPS
+        for i, x_core in enumerate(dbscan_model.components_): 
+            if metric(x_new, x_core) < dbscan_model.eps:
+                # Assign label of x_core to x_new
+                y_new[j] = dbscan_model.labels_[dbscan_model.core_sample_indices_[i]]
+                break
+
+    return y_new
+
+for i, eps in enumerate(epss):
+    for j, min_samples in enumerate(min_sampless):
+        y_pred = dbscan_predict(cl_model[i][j], X)
+        # Number of clusters in labels, ignoring noise if present.
+        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
+        noise[i,j] = sum(y_pred == -1)
+        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
+        
+        y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
+        f1[i,j] = metrics.f1_score(y, y_pred_inc, average='weighted')
+
+        logger.info(
+            "Validation of DBSCAN with (eps, min_samples)=({:1.0e},{:>2d}), n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
+                eps, min_samples, n_clusters[i,j], homogenity[i,j], f1[i,j], noise[i,j],
+            ))
+
+
+
+# In[ ]:
+
+param_plot_prepare('Validation of cluster homogenity by DBSCAN parameters')
+param_plot_scatter(homogenity, epss, min_sampless)
+param_plot_annotate(homogenity, epss, min_sampless, fmt='{:.2f}')
+param_plot_save(out_prefix+'cluster_homogenity_val.pdf')
+
+param_plot_prepare('Validation of cluster count by DBSCAN parameters')
+param_plot_scatter(n_clusters, epss, min_sampless)
+param_plot_annotate(n_clusters, epss, min_sampless)
+param_plot_save(out_prefix+'cluster_count_val.pdf')
+
+param_plot_prepare('Validation of detection performance (F1) by DBSCAN parameters')
+param_plot_scatter(f1, epss, min_sampless)
+param_plot_annotate(f1, epss, min_sampless, fmt='{:.2f}')
+param_plot_save(out_prefix+'cluster_detection_val.pdf')
+
 
 
 # In[ ]:
@@ -751,7 +897,33 @@ sys.exit(0)
 
 # In[ ]:
 
-eps = 0.1
+eps = 0.03 
+min_samples = 3
+i = epss.tolist().index(eps)
+j = min_sampless.tolist().index(min_samples)
+
+y_pred = cl_model[i][j].labels_
+y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
+
+logger.info(
+    "Incident(i) to cluster(j) \"confusion matrix\":\n"+
+    str(metrics.confusion_matrix(y, y_pred))
+)
+
+logger.info(
+    "Incident(i) to incident(j) \"confusion matrix\":\n"+
+    str(metrics.confusion_matrix(y, y_pred_inc))
+)
+
+logger.info(
+    "Classification report:\n"+
+    metrics.classification_report(y, y_pred_inc)
+)
+
+
+# In[ ]:
+
+eps = 0.01
 min_samples = 1
 
 db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -767,12 +939,11 @@ logger.info(
         eps, min_samples, n_clusters[i,j], homogenity[i,j],
     ))
 
-logger.info("Incident(i) to cluster(j) \"confusion matrix\":")
-inc_to_clust = metrics.confusion_matrix(y, y_pred)
-logger.info(inc_to_clust)
 
-
-# In[ ]:
+logger.info(
+    "Incident(i) to cluster(j) \"confusion matrix\":\n"+
+    str(metrics.confusion_matrix(y, y_pred))
+)
 
 # Assign label to clusters according which incident has the largest part of its alert in the given cluster
 # weight to handle class skew
@@ -788,8 +959,15 @@ for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]
 
 # misclassification matrix
 y_pred_inc = np.array([mapper[el] for el in y_pred])
-from sklearn import metrics
-metrics.confusion_matrix(y, y_pred_inc)
+logger.info(
+    "Incident(i) to incident(j) \"confusion matrix\":\n"+
+    str(metrics.confusion_matrix(y, y_pred_inc))
+)
+
+logger.info(
+    "Classification report:\n"+
+    metrics.classification_report(y, y_pred_inc)
+)
 
 
 # In[ ]:
@@ -799,7 +977,9 @@ metrics.confusion_matrix(y, y_pred_inc)
 
 # In[ ]:
 
-
+for i in In[-10:]:
+    print('Command:')
+    print(i)
 
 
 # In[ ]:
