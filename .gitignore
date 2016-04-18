@@ -60,3 +60,4 @@ target/
 ipython_notebook_config.py
 /env27/
 /output/
+/data
