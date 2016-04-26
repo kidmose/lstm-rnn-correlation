@@ -93,7 +93,7 @@ from lasagne.objectives import *
 import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
 from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, break_down_data
-from lstm_rnn_tied_weights import iterate_minibatches
+from lstm_rnn_tied_weights import iterate_minibatches, encode
 from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
 logger = lstm_rnn_tied_weights.logger
 
@@ -369,30 +369,30 @@ incidents = load([
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-142-1/2015-10-23_win7.pcap.shifted.out', #	85
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-47/botnet-capture-20110816-donbot.pcap.shifted.out', #	88
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-65/2014-04-07_capture-win11.pcap.shifted.out', #	90
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', #	100
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', #	184
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', #	317
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', #	328
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', #	390
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', #	395
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-49/botnet-capture-20110816-qvod.pcap.shifted.out', #	444
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', #	100
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', #	184
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', #	317
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', #	328
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', #	390
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', #	395
+'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-49/botnet-capture-20110816-qvod.pcap.shifted.out', #	444
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-128-1/2015-06-07_capture-win12.pcap.shifted.out', #	611
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-1/2015-10-23_win11.pcap.shifted.out', #	839
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-42/botnet-capture-20110810-neris.pcap.shifted.out', #	865
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-55/capture-win13.pcap.shifted.out', #	954
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out', #	1354
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out', #	1548
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out', #	1704
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out', #	1785
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-54/botnet-capture-20110815-fast-flux-2.pcap.shifted.out', #	2015
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-100/2014-12-20_capture-win5.pcap.shifted.out', #	2685
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-35-1/2014-01-31_capture-win7.pcap.shifted.out', #	3199
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-2/2015-12-09_capture-win4.pcap.shifted.out', #	3817
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-127-1/2015-06-07_capture-win8.pcap.shifted.out', #	4900
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-44/botnet-capture-20110812-rbot.pcap.shifted.out', #	5338
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-1/2015-12-09_capture-win4.pcap.shifted.out', #	5896
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-126-1/2015-06-07_capture-win7.pcap.shifted.out', #	6992
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-125-1/2015-06-07_capture-win5.pcap.shifted.out', #	7461
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out', #	1354
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out', #	1548
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out', #	1704
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out', #	1785
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-54/botnet-capture-20110815-fast-flux-2.pcap.shifted.out', #	2015
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-100/2014-12-20_capture-win5.pcap.shifted.out', #	2685
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-35-1/2014-01-31_capture-win7.pcap.shifted.out', #	3199
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-2/2015-12-09_capture-win4.pcap.shifted.out', #	3817
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-127-1/2015-06-07_capture-win8.pcap.shifted.out', #	4900
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-44/botnet-capture-20110812-rbot.pcap.shifted.out', #	5338
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-1/2015-12-09_capture-win4.pcap.shifted.out', #	5896
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-126-1/2015-06-07_capture-win7.pcap.shifted.out', #	6992
+#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-125-1/2015-06-07_capture-win5.pcap.shifted.out', #	7461
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-110-4/2015-04-22_capture-win9.pcap.shifted.out', #	17501
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-150-1/2015-12-05_capture-win3.pcap.shifted.out', #	18854
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-3/2013-08-20_capture-win15.pcap.shifted.out', #	38279
@@ -565,7 +565,7 @@ error_dict = dict()
 land = np.logical_and
 lnot = np.logical_not
     
-for batch in iterate_minibatches(get_train_batch(), test_max, keep_incidents=True):
+for batch in iterate_minibatches(get_val_batch(), len(list(get_val_batch())), keep_incidents=True):
     alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
     pred_floats = prediction_fn(alerts1, alerts2, masks1, masks2)
 
@@ -594,13 +594,50 @@ errors_norm = errors / errors.sum(axis=1)[:, None]
 
 # In[ ]:
 
+TP, TN, FP, FN = range(4)
+
+error_count_latex = str()
+error_count_latex += "\\hline\n" + " & ".join(['Incident', 'TP', 'TN', 'FP', 'FN']) + '\\\\\\hline \n \\hline \n'
+for i, line in enumerate(errors):
+    fmt = "{}" + " & ${:>8.0f} $"*4 + '\\\\\\hline \n'
+    error_count_latex += fmt.format(i+1, *line)
+logger.info('Error counts: \n' + error_count_latex)
+
+# error rates
+tpr = errors[:,TP] / (errors[:,TP] + errors[:,FN])
+tnr = errors[:,TN] / (errors[:,TN] + errors[:,FP])
+fpr = errors[:,FP] / (errors[:,TN] + errors[:,FP])
+fnr = errors[:,FN] / (errors[:,TP] + errors[:,FN])
+error_rates = np.vstack((tpr, tnr, fpr, fnr)).T
+
+error_rates = np.vstack((error_rates, error_rates.mean(axis=0)[None,:])) # Average rates
+
+error_rates_latex = str()
+error_rates_latex += "\\hline\n" + " & ".join(['Incident', 'TPR', 'TNR', 'FPR', 'FNR']) + '\\\\\\hline \n \\hline \n'
+for i, line in enumerate(error_rates):
+    if i == 7:
+        i = 'Avg.'
+    else:
+        i = i + 1
+    fmt = ("{}" + " & ${:>8.2f} \%$"*4 + '\\\\\\hline \n')
+    error_rates_latex += fmt.format(i, *line*100)
+logger.info('Error rates: \n' + error_rates_latex)
+
+
+# In[ ]:
+
+("{}"*4).format(*range(4))
+
+
+# In[ ]:
+
 import matplotlib.pyplot as plt
 
 index = np.arange(len(labels))
 
 fig, ax = plt.subplots()
 
-bar_width = 0.1
+bar_width = 0.2
 
 
 
@@ -657,19 +694,32 @@ plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 
 # In[ ]:
 
+def get_train_samples():
+    for alert1, mask1, incident1 in zip(*encode(alerts_train)):
+        alert2 = mask2 = correlation = incident2 = None
+        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+
+def get_val_samples():
+    for alert1, mask1, incident1 in zip(*encode(alerts_val)):
+        alert2 = mask2 = correlation = incident2 = None
+        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+
+def get_test_samples():
+    for alert1, mask1, incident1 in zip(*encode(alerts_test)):
+        alert2 = mask2 = correlation = incident2 = None
+        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+
+
+# In[ ]:
+
 from sklearn.cluster import DBSCAN
 from sklearn import metrics
 
 logger.info("Clustering of alerts")
-batch = next(iterate_minibatches(
-        get_train_batch(),
-        env['CLUSTER_SAMPLES'],
-        keep_incidents=True
-))
 
-alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
-X = alert_to_vector(alerts1, masks1)
-y = iz
+alerts, masks, incident = encode(alerts_train)
+X = alert_to_vector(alerts, masks)
+y = incident
 logger.info("Breakdown of labels:\n"+ break_down_data(y))
 
 logger.info("Precomputing distances")
@@ -826,32 +876,30 @@ param_plot_save(out_prefix+'cluster_detection.pdf')
 
 # In[ ]:
 
-logger.info("Applying clusters to validation data")
-batch = next(iterate_minibatches(
-        get_val_batch(),
-        env['CLUSTER_SAMPLES'],
-        keep_incidents=True
-))
-
-alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
-X = alert_to_vector(alerts1, masks1)
-y = iz
-logger.info("Breakdown of labels:\n"+ break_down_data(y))
 
 def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
     # Result is noise by default
     y_new = np.ones(shape=len(X_new), dtype=int)*-1 
-
+    
     # Iterate all input samples for a label
     for j, x_new in enumerate(X_new):
-        # Find a core sample closer than EPS
         for i, x_core in enumerate(dbscan_model.components_): 
-            if metric(x_new, x_core) < dbscan_model.eps:
+            if  metric(x_new, x_core) < dbscan_model.eps:
                 # Assign label of x_core to x_new
                 y_new[j] = dbscan_model.labels_[dbscan_model.core_sample_indices_[i]]
                 break
-
     return y_new
+
+
+# In[ ]:
+
+logger.info("Applying clusters to validation data")
+
+alerts, masks, incident = encode(alerts_val)
+X = alert_to_vector(alerts, masks)
+y = incident
+
+logger.info("Breakdown of labels:\n"+ break_down_data(y))
 
 for i, eps in enumerate(epss):
     for j, min_samples in enumerate(min_sampless):
@@ -868,7 +916,6 @@ for i, eps in enumerate(epss):
             "Validation of DBSCAN with (eps, min_samples)=({:1.0e},{:>2d}), n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
                 eps, min_samples, n_clusters[i,j], homogenity[i,j], f1[i,j], noise[i,j],
             ))
-
 
 
 # In[ ]:
@@ -895,30 +942,138 @@ param_plot_save(out_prefix+'cluster_detection_val.pdf')
 sys.exit(0)
 
 
+# ## Clustering - test data
+
 # In[ ]:
 
-eps = 0.03 
-min_samples = 3
+eps = 0.01
+min_samples =10
 i = epss.tolist().index(eps)
 j = min_sampless.tolist().index(min_samples)
 
-y_pred = cl_model[i][j].labels_
+logger.info("Applying clusters to test data")
+
+alerts, masks, incident = encode(alerts_test)
+X = alert_to_vector(alerts, masks)
+y = incident
+
+y_pred = dbscan_predict(cl_model[i][j], X)
 y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
+
+
+# In[ ]:
 
 logger.info(
     "Incident(i) to cluster(j) \"confusion matrix\":\n"+
     str(metrics.confusion_matrix(y, y_pred))
 )
 
+labels = ['noise'] + range(n_clusters[i][j])
+desired_rows = range(1,8)
+
+res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
+for l, row in zip(labels, metrics.confusion_matrix(y, y_pred)):
+    if l not in desired_rows:
+        continue # No incident zero or noise as row
+    fmt = ('{}' + " & {} "*len(row))
+    res += fmt.format(l, *row) + '\\\\\\hline\n'
+logger.info(res)
+
+
+
+# In[ ]:
+
 logger.info(
-    "Incident(i) to incident(j) \"confusion matrix\":\n"+
+    "Incident(i) to incident(j) confusion matrix:\n"+
     str(metrics.confusion_matrix(y, y_pred_inc))
 )
+
+labels = ['noise'] + range(1,len(set(y))+1)
+desired_rows = range(1,len(set(y))+1)
+
+res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
+for l, row in zip(labels, metrics.confusion_matrix(y, y_pred_inc)):
+    if l not in desired_rows:
+        continue 
+    fmt = ('{}' + " & {} "*len(row))
+    res += fmt.format(l, *row) + '\\\\\\hline\n'
+logger.info(res)
+
+
+# In[ ]:
+
+cm = metrics.confusion_matrix(y, y_pred_inc)
+logger.info("Correctly classified, disregarding noise: {:.2f}%".format(cm[1:,1:].diagonal().sum()/cm[1:,1:].sum()*100))
+logger.info("Correctly classified, including noise: {:.2f}%".format(cm[1:,1:].diagonal().sum()/cm.sum()*100))
+logger.info("Noise sample count: {}".format(sum(y_pred_inc == -1)))
+
+
+# In[ ]:
 
 logger.info(
     "Classification report:\n"+
     metrics.classification_report(y, y_pred_inc)
 )
+
+
+# In[ ]:
+
+# Investigate noise alerts
+noise_alerts = alerts[y_pred_inc == -1]
+noise_masks = masks[y_pred_inc == -1]
+
+def decode(alert, mask):
+    alert = alert[mask.astype(bool)] # apply mask
+    alert = [chr(c) for c in alert]
+    return ''.join(alert)
+
+noise_alert_strs = [decode(a, m) for a, m in zip(noise_alerts, noise_masks)]
+
+# strip ips and timestamp
+import re
+ip_ptrn = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:[0-9]{1,5})?'
+ts_ptrn = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
+noise_alert_strs = [re.sub(ip_ptrn + ' -> ' + ip_ptrn, '', a) for a in noise_alert_strs]
+noise_alert_strs = [re.sub(ts_ptrn, '', a) for a in noise_alert_strs]
+noise_alert_strs = [a.strip() for a in noise_alert_strs]
+
+# Uniques sorted by decreasing frequency
+unique, unique_counts = np.unique(noise_alert_strs, return_counts=True)
+res = sorted(
+        zip(unique, unique_counts),
+        key=itemgetter(1),
+        reverse=True,
+)
+unique, unique_counts = map(list, zip(*res))
+
+for i, (u, c) in enumerate(zip(unique, unique_counts)):
+    print("{:2d}. n={:2d}: {}".format(i+1, c, u))
+    
+
+
+# In[ ]:
+
+unique
+
+
+# In[ ]:
+
+zip(*np.unique(noise_alert_strs, return_counts=True)).sort
+
+
+# In[ ]:
+
+get_ipython().magic(u'pinfo2 np.unique')
+
+
+# In[ ]:
+
+mask_ips()
+
+
+# In[ ]:
+
+sys.exit(0)
 
 
 # In[ ]:
