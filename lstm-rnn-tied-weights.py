@@ -626,11 +626,6 @@ logger.info('Error rates: \n' + error_rates_latex)
 
 # In[ ]:
 
-("{}"*4).format(*range(4))
-
-
-# In[ ]:
-
 import matplotlib.pyplot as plt
 
 index = np.arange(len(labels))
@@ -688,6 +683,11 @@ plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
 plt.tight_layout()
 
 plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
+
+
+# In[ ]:
+
+sys.exit(0)
 
 
 # # Clustering - train data
@@ -876,7 +876,6 @@ param_plot_save(out_prefix+'cluster_detection.pdf')
 
 # In[ ]:
 
-
 def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
     # Result is noise by default
     y_new = np.ones(shape=len(X_new), dtype=int)*-1 
@@ -935,11 +934,6 @@ param_plot_scatter(f1, epss, min_sampless)
 param_plot_annotate(f1, epss, min_sampless, fmt='{:.2f}')
 param_plot_save(out_prefix+'cluster_detection_val.pdf')
 
-
-
-# In[ ]:
-
-sys.exit(0)
 
 
 # ## Clustering - test data
@@ -1018,7 +1012,61 @@ logger.info(
 
 # In[ ]:
 
-# Investigate noise alerts
+logger.error('DELETE CELL - ALREADY COMITTED TO LIBRARY')
+PATTERN_IP = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+PATTERN_TS = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
+PATTERN_PORT = '(<IP>|'+PATTERN_IP+'):[0-9]+'
+
+from lstm_rnn_tied_weights import replace_re_in_alerts
+
+def mask_ports(incidents):
+    logger.info('Masking out ports')
+    return [
+        (incidentid, replace_re_in_alerts(alerts, PATTERN_PORT, '<IP>'))
+        for incidentid, alerts in incidents
+    ]
+
+
+# ## Analysing results
+
+# In[ ]:
+
+def extract_prio(incidents):
+    logger.info('Extracting priority from alerts in incidents')
+    
+    from_alert = lambda a: int(re.match('.*\[Priority: ([0-9]+)\].*',a).group(1))
+    from_alerts = lambda alerts: map(from_alert, alerts)
+        
+    return [
+        (incidentid, map(from_alert, alerts))
+        for incidentid, alerts in incidents
+    ]
+
+
+# In[ ]:
+
+def uniq_counts(l, sort_key=itemgetter(1), sort_reverse=True):
+    try:
+        l = [json.dumps(el) for el in l]
+        logger.debug('dumped to json')
+    except:
+        l = [str(el) for el in l]
+        logger.warn('failed to dump to json, casting to str')
+    unique, unique_counts = np.unique(l, return_counts=True)
+    res = sorted(
+        zip(unique, unique_counts),
+        key=sort_key,
+        reverse=sort_reverse,
+    )
+    unique, count = map(list, zip(*res))
+    try:
+        unique = list(map(json.loads, unique))
+        logger.debug('read from json')
+    except:
+        logger.warn('failed to read as json, returning as str')
+    return unique, count
+
+# a bogus incident to hold all the unclassifiable test alerts
 noise_alerts = alerts[y_pred_inc == -1]
 noise_masks = masks[y_pred_inc == -1]
 
@@ -1027,240 +1075,85 @@ def decode(alert, mask):
     alert = [chr(c) for c in alert]
     return ''.join(alert)
 
-noise_alert_strs = [decode(a, m) for a, m in zip(noise_alerts, noise_masks)]
+noise_incident = (None, [decode(a, m) for a, m in zip(noise_alerts, noise_masks)])
 
-# strip ips and timestamp
-import re
-ip_ptrn = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:[0-9]{1,5})?'
-ts_ptrn = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
-noise_alert_strs = [re.sub(ip_ptrn + ' -> ' + ip_ptrn, '', a) for a in noise_alert_strs]
-noise_alert_strs = [re.sub(ts_ptrn, '', a) for a in noise_alert_strs]
-noise_alert_strs = [a.strip() for a in noise_alert_strs]
 
-# Uniques sorted by decreasing frequency
-unique, unique_counts = np.unique(noise_alert_strs, return_counts=True)
-res = sorted(
-        zip(unique, unique_counts),
-        key=itemgetter(1),
-        reverse=True,
+# In[ ]:
+
+logger.info('Counts of different noise alerts')
+uniq, counts = uniq_counts(
+    pool(modify(
+            [noise_incident],
+            [mask_ips, mask_tss, mask_ports],
+)))
+for i, (u, c) in enumerate(zip(uniq, counts)):
+    logger.info("{:2d}. n={:2d}: {}".format(i+1, c, u[1]))
+
+
+# In[ ]:
+
+logger.info('Priority among noise alerts:')
+uniq, counts = uniq_counts(pool(modify(
+            [noise_incident],
+            [extract_prio],
+)), sort_key=itemgetter(0), sort_reverse=False)
+for u, c in zip(uniq, counts):
+    logger.info("Priority {}, n={:3d}, {:5.2f}%".format(u[1], c, c/sum(counts)*100))
+
+
+# In[ ]:
+
+logger.info('Priority of all alerts:')
+all_alerts = pool(modify(
+        incidents,
+        [extract_prio],
+))
+all_alerts = [a[1] for a in all_alerts] # discard incident id
+uniq, counts = uniq_counts(
+    all_alerts, 
+    sort_key=itemgetter(0), sort_reverse=False,
 )
-unique, unique_counts = map(list, zip(*res))
-
-for i, (u, c) in enumerate(zip(unique, unique_counts)):
-    print("{:2d}. n={:2d}: {}".format(i+1, c, u))
-    
+for u, c in zip(uniq, counts):
+    logger.info("Priority {}, n={:4d}, {:5.2f}%".format(u, c, c/sum(counts)*100))
 
 
 # In[ ]:
 
-unique
-
-
-# In[ ]:
-
-zip(*np.unique(noise_alert_strs, return_counts=True)).sort
-
-
-# In[ ]:
-
-get_ipython().magic(u'pinfo2 np.unique')
-
-
-# In[ ]:
-
-mask_ips()
-
-
-# In[ ]:
-
-sys.exit(0)
-
-
-# In[ ]:
-
-eps = 0.01
-min_samples = 1
-
-db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-core_samples_mask[db.core_sample_indices_] = True
-y_pred = db.labels_
-# Number of clusters in labels, ignoring noise if present.
-n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
-
-logger.info(
-    "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
-        eps, min_samples, n_clusters[i,j], homogenity[i,j],
-    ))
-
-
-logger.info(
-    "Incident(i) to cluster(j) \"confusion matrix\":\n"+
-    str(metrics.confusion_matrix(y, y_pred))
+logger.info('Priority of all alerts by incident:')
+uniq, counts = uniq_counts(pool(modify(
+        incidents,
+        [extract_prio],
+    )),
+    sort_key=itemgetter(0), sort_reverse=False,
 )
-
-# Assign label to clusters according which incident has the largest part of its alert in the given cluster
-# weight to handle class skew
-weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
-allocs = zip(y, y_pred)
-
-from collections import Counter
-c = Counter(map(tuple, allocs))
-
-mapper = dict()
-for _, (incident, cluster) in sorted([(c[k]*weights[k[0]], k) for k in c.keys()]):
-    mapper[cluster] = incident
-
-# misclassification matrix
-y_pred_inc = np.array([mapper[el] for el in y_pred])
-logger.info(
-    "Incident(i) to incident(j) \"confusion matrix\":\n"+
-    str(metrics.confusion_matrix(y, y_pred_inc))
-)
-
-logger.info(
-    "Classification report:\n"+
-    metrics.classification_report(y, y_pred_inc)
-)
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-for i in In[-10:]:
-    print('Command:')
-    print(i)
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-get_ipython().magic(u'pinfo2 metrics.confusion_matrix')
-
-
-# In[ ]:
-
-m, n = np.meshgrid
-
-
-# In[ ]:
-
-
-db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-core_samples_mask[db.core_sample_indices_] = True
-y_pred = db.labels_
-# Number of clusters in labels, ignoring noise if present.
-n_clusters = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-
-print(
-    "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
-        eps, min_samples, n_clusters, metrics.homogeneity_score(y, y_pred)
-    ))
-
-
-# In[ ]:
-
-
-
-
-def my_cluster_eval(y, y_pred, X, n_clusters):
-    print('Estimated number of clusters: %d' % n_clusters_)
-    print("Homogeneity: %0.3f" % metrics.homogeneity_score(y, y_pred))
-    print("Completeness: %0.3f" % metrics.completeness_score(y, y_pred))
-    print("V-measure: %0.3f" % metrics.v_measure_score(y, y_pred))
-    print("Adjusted Rand Index: %0.3f"
-          % metrics.adjusted_rand_score(y, y_pred))
-    print("Adjusted Mutual Information: %0.3f"
-          % metrics.adjusted_mutual_info_score(y, y_pred))
-    print("Silhouette Coefficient: %0.3f"
-          % metrics.silhouette_score(X, y_pred))
-    
-for eps in [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30]:
-    for min_samples in [1, 3, 10, 30]:
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        y_pred = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-        
-        logger.info(
-            "DBSCAN with eps={} and min_samples={} yielded {} clusters with a homogenity of {}".format(
-                eps, min_samples, n_clusters, metrics.homogeneity_score(y, y_pred)
-            ))
-
-
-# In[ ]:
-
-
-
-
-
-my_cluster_eval(y, y_pred, X, n_clusters_)
-
-
-# In[ ]:
-
-np.unique(y_pred, return_counts=True)
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-(((cm+1.0e-16) / cm.sum(axis=0))*100)
-
-
-# In[ ]:
-
-# Map any cluster to the incident that it is most often put in
-
-mapping = sorted(mapping)
-
-
-# In[ ]:
-
-mapper = dict()
-for _, m in mapping:
-    mapper[m[0]] = m[1]
-    
-y_pred = np.array([mapper[el] for el in y_pred])
-
-print(mapper.keys())
-print(mapper.values())
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-weights = {l: 1/cnt for (l, cnt) in zip(*np.unique(y, return_counts=True))}
-
-
-# In[ ]:
-
-zip(*np.unique(y, return_counts=True))
+uniq = np.array(uniq)-1 # asume 1-based indexing, so shift
+counts = np.array(counts)
+cnt_array = np.zeros([len(set(uniq[:,0])), len(set(uniq[:,1]))], dtype=int) # asume consecutive integers
+for (i, p), c in zip(uniq, counts):
+    cnt_array[i,p] = c
+
+s = "Counts:\n"
+fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
+for i in np.arange(cnt_array.shape[0]):
+    s += fmt.format(*['Incident '+str(i+1)]+list(cnt_array[i,:]))
+logger.info(s)
+
+s = "Normalised pr. incident:\n"
+fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
+fmt = '{:<10}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
+for i in np.arange(cnt_array.shape[0]):
+    s += fmt.format(*['Incident '+str(i+1)]+list((100*cnt_array[i,:]/cnt_array.sum(axis=1)[i])))
+logger.info(s)
+
+s = "Normalised across incident:\n"
+fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
+fmt = '{:<10}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
+for i in np.arange(cnt_array.shape[0]):
+    s += fmt.format(*['Incident '+str(i+1)]+list(100*cnt_array[i,:]/cnt_array.sum()))
+logger.info(s)
 
 
 # In[ ]:
