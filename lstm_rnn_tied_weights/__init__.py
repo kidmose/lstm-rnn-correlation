@@ -461,19 +461,28 @@ def replace_re_in_alerts(alerts, pattern, new):
     fn = lambda alert : re.sub(pattern, new, alert)
     return map(fn, alerts)
 
+PATTERN_IP = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+PATTERN_TS = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
+PATTERN_PORT = '(<IP>|'+PATTERN_IP+'):[0-9]+'
+
 def mask_ips(incidents):
     logger.info('Masking out IP addresses')
-    pattern = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
     return [
-        (incidentid, replace_re_in_alerts(alerts, pattern, '<IP>'))
+        (incidentid, replace_re_in_alerts(alerts, PATTERN_IP, '<IP>'))
         for incidentid, alerts in incidents
     ]
 
 def mask_tss(incidents):
     logger.info('Masking out IP addresses')
-    pattern = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
     return [
-        (incidentid, replace_re_in_alerts(alerts, pattern, '<TIMESTAMP>'))
+        (incidentid, replace_re_in_alerts(alerts, PATTERN_TS, '<TIMESTAMP>'))
+        for incidentid, alerts in incidents
+    ]
+
+def mask_port(incidents):
+    logger.info('Masking out ports')
+    return [
+        (incidentid, replace_re_in_alerts(alerts, PATTERN_PORT, '<IP>'))
         for incidentid, alerts in incidents
     ]
 
