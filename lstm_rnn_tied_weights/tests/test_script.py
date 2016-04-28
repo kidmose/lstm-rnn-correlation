@@ -57,6 +57,7 @@ class Test(unittest.TestCase):
         env['NN_UNITS'] = '2'
         env['CUT'] = 'none'
         env['CLUSTER_SAMPLES'] = '100'
+        env['TEST'] = 'True'
         for k, v in kwargs.items():
             env[k] = v
         self.assertFalse(call([sys.executable, 'lstm-rnn-tied-weights.py'], env=env))

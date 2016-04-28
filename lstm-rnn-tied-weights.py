@@ -164,6 +164,9 @@ env['MODEL'] = os.environ.get('MODEL', None)
 # Clustering
 env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 
+# Perform tests, i.e. use test data
+env['TEST'] = 'true' in os.environ.get('TEST', str()).lower()
+
 logger.info("Starting.")
 logger.info("env: " + str(env))
 for k in sorted(env.keys()):
@@ -970,7 +973,11 @@ param_plot_save(out_prefix+'cluster_detection_val.pdf')
 
 # In[ ]:
 
-sys.exit(0)
+if env['TEST']:
+    logger.info('Continuing to use test data')
+else:
+    logger.info('Validation results completed, exiting')
+    sys.exit(0)
 
 
 # In[ ]:
