@@ -473,13 +473,13 @@ def mask_ips(incidents):
     ]
 
 def mask_tss(incidents):
-    logger.info('Masking out IP addresses')
+    logger.info('Masking out timestamps')
     return [
         (incidentid, replace_re_in_alerts(alerts, PATTERN_TS, '<TIMESTAMP>'))
         for incidentid, alerts in incidents
     ]
 
-def mask_port(incidents):
+def mask_ports(incidents):
     logger.info('Masking out ports')
     return [
         (incidentid, replace_re_in_alerts(alerts, PATTERN_PORT, '<IP>'))
@@ -512,6 +512,16 @@ def uniquify_victim(incidents, oldip):
         (incidentid, replace_re_in_alerts(alerts, oldip, ips[incidentid]))
         for incidentid, alerts in incidents
     ]
+
+def extract_prio(incidents):
+    logger.info('Extracting priority from alerts in incidents')
+    from_alert = lambda a: int(re.match('.*\[Priority: ([0-9]+)\].*',a).group(1))
+    from_alerts = lambda alerts: map(from_alert, alerts)
+    return [
+        (incidentid, map(from_alert, alerts))
+        for incidentid, alerts in incidents
+    ]
+
 def break_down_data(
     items,
     extractors = [('label', lambda item: item),]

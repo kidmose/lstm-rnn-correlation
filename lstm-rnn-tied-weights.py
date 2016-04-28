@@ -94,7 +94,7 @@ import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
 from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, break_down_data
 from lstm_rnn_tied_weights import iterate_minibatches, encode
-from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim
+from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim, extract_prio
 logger = lstm_rnn_tied_weights.logger
 
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
@@ -1010,38 +1010,7 @@ logger.info(
 )
 
 
-# In[ ]:
-
-logger.error('DELETE CELL - ALREADY COMITTED TO LIBRARY')
-PATTERN_IP = '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
-PATTERN_TS = '[0-9]{2}/[0-9]{2}-[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}'
-PATTERN_PORT = '(<IP>|'+PATTERN_IP+'):[0-9]+'
-
-from lstm_rnn_tied_weights import replace_re_in_alerts
-
-def mask_ports(incidents):
-    logger.info('Masking out ports')
-    return [
-        (incidentid, replace_re_in_alerts(alerts, PATTERN_PORT, '<IP>'))
-        for incidentid, alerts in incidents
-    ]
-
-
 # ## Analysing results
-
-# In[ ]:
-
-def extract_prio(incidents):
-    logger.info('Extracting priority from alerts in incidents')
-    
-    from_alert = lambda a: int(re.match('.*\[Priority: ([0-9]+)\].*',a).group(1))
-    from_alerts = lambda alerts: map(from_alert, alerts)
-        
-    return [
-        (incidentid, map(from_alert, alerts))
-        for incidentid, alerts in incidents
-    ]
-
 
 # In[ ]:
 
