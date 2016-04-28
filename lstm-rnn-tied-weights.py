@@ -94,7 +94,7 @@ import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
 from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, break_down_data
 from lstm_rnn_tied_weights import iterate_minibatches, encode
-from lstm_rnn_tied_weights import mask_ips, mask_tss, uniquify_victim, extract_prio
+from lstm_rnn_tied_weights import mask_ips, mask_tss, mask_ports, uniquify_victim, extract_prio
 logger = lstm_rnn_tied_weights.logger
 
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
@@ -685,30 +685,60 @@ plt.tight_layout()
 plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 
 
-# In[ ]:
-
-sys.exit(0)
-
-
-# # Clustering - train data
+# # Clustering
 
 # In[ ]:
 
-def get_train_samples():
-    for alert1, mask1, incident1 in zip(*encode(alerts_train)):
-        alert2 = mask2 = correlation = incident2 = None
-        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+# data, encoded and structured for clustering
 
-def get_val_samples():
-    for alert1, mask1, incident1 in zip(*encode(alerts_val)):
-        alert2 = mask2 = correlation = incident2 = None
-        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+def _get_alerts(alerts):
+    """
+    Encode and structures single alerts similarly to pairs
 
-def get_test_samples():
-    for alert1, mask1, incident1 in zip(*encode(alerts_test)):
-        alert2 = mask2 = correlation = incident2 = None
-        yield alert1, alert2, mask1, mask2, correlation, incident1, incident2
+    Similar to _get_batch, but ommitting second alerts and correlation.
+    """
+    alerts, masks, incidents = encode(alerts)
+    if len(alerts) > env['CLUSTER_SAMPLES']:
+        alerts = alerts[:env['CLUSTER_SAMPLES'],:]
+        masks = masks[:env['CLUSTER_SAMPLES'],:]
+        incidents = incidents[:env['CLUSTER_SAMPLES']]
+    return alerts, masks, incidents
 
+if env.get('CUT_NONE', False):
+    get_train_alerts = get_val_alerts = get_test_alerts = lambda:_get_alerts(alerts)
+
+elif env.get('CUT_INC', False):
+    get_train_alerts = lambda:_get_alerts(alerts_train)
+    get_val_alerts = lambda:_get_alerts(alerts_val)
+    get_test_alerts = lambda:_get_alerts(alerts_test)
+
+elif env.get('CUT_ALERT', False):
+    get_train_alerts = lambda:_get_alerts(alerts_train)
+    get_val_alerts = lambda:_get_alerts(alerts_val)
+    get_test_alerts = lambda:_get_alerts(alerts_test)
+
+elif env.get('CUT_PAIR', False):
+    def _get_alerts(batch_it):
+        """Get batch and drop unused vectors - for join and shuffle efffects"""
+        alerts, _, masks, _, _, incidents, _ = zip(*batch_it())
+        alerts = np.array(alerts)
+        masks = np.array(masks)
+        incidents = np.array(incidents)
+        if len(alerts) > env['CLUSTER_SAMPLES']:
+            alerts = alerts[:env['CLUSTER_SAMPLES'],:]
+            masks = masks[:env['CLUSTER_SAMPLES'],:]
+            incidents = incidents[:env['CLUSTER_SAMPLES']]
+        return alerts, masks, incidents
+
+    get_train_alerts = lambda:_get_alerts(get_train_batch)
+    get_val_alerts = lambda:_get_alerts(get_val_batch)
+    get_test_alerts = lambda:_get_alerts(get_test_batch)
+
+else:
+    raise NotImplementedError("No cut selected")
+
+
+# ## Cluster train data
 
 # In[ ]:
 
@@ -717,9 +747,9 @@ from sklearn import metrics
 
 logger.info("Clustering of alerts")
 
-alerts, masks, incident = encode(alerts_train)
-X = alert_to_vector(alerts, masks)
-y = incident
+alerts_matrix, masks_matrix, incidents_vector = get_train_alerts()
+X = alert_to_vector(alerts_matrix, masks_matrix)
+y = incidents_vector
 logger.info("Breakdown of labels:\n"+ break_down_data(y))
 
 logger.info("Precomputing distances")
@@ -872,7 +902,7 @@ param_plot_save(out_prefix+'cluster_detection.pdf')
 
 
 
-# # Clustering - validation data
+# ## Cluster validation data
 
 # In[ ]:
 
@@ -894,9 +924,9 @@ def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
 
 logger.info("Applying clusters to validation data")
 
-alerts, masks, incident = encode(alerts_val)
-X = alert_to_vector(alerts, masks)
-y = incident
+alerts_matrix, masks_matrix, incidents_vector = get_val_alerts()
+X = alert_to_vector(alerts_matrix, masks_matrix)
+y = incidents_vector
 
 logger.info("Breakdown of labels:\n"+ break_down_data(y))
 
@@ -940,6 +970,11 @@ param_plot_save(out_prefix+'cluster_detection_val.pdf')
 
 # In[ ]:
 
+sys.exit(0)
+
+
+# In[ ]:
+
 eps = 0.01
 min_samples =10
 i = epss.tolist().index(eps)
@@ -947,9 +982,9 @@ j = min_sampless.tolist().index(min_samples)
 
 logger.info("Applying clusters to test data")
 
-alerts, masks, incident = encode(alerts_test)
-X = alert_to_vector(alerts, masks)
-y = incident
+alerts_matrix, masks_matrix, incidents_vector = get_test_alerts()
+X = alert_to_vector(alerts_matrix, masks_matrix)
+y = incidents_vector
 
 y_pred = dbscan_predict(cl_model[i][j], X)
 y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
@@ -1036,8 +1071,8 @@ def uniq_counts(l, sort_key=itemgetter(1), sort_reverse=True):
     return unique, count
 
 # a bogus incident to hold all the unclassifiable test alerts
-noise_alerts = alerts[y_pred_inc == -1]
-noise_masks = masks[y_pred_inc == -1]
+noise_alerts = alerts_matrix[y_pred_inc == -1]
+noise_masks = masks_matrix[y_pred_inc == -1]
 
 def decode(alert, mask):
     alert = alert[mask.astype(bool)] # apply mask
