@@ -93,3 +93,6 @@ class Test(unittest.TestCase):
     def test_learning_rate(self):
         self.script_helper(NN_LEARNING_RATE='1e-6')
         self.script_helper(NN_LEARNING_RATE='1e6')
+
+    def test_max_prio(self):
+        self.script_helper(MAX_PRIO='2')
