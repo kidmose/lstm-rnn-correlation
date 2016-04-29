@@ -94,7 +94,8 @@ import lstm_rnn_tied_weights
 from lstm_rnn_tied_weights import CosineSimilarityLayer
 from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, break_down_data
 from lstm_rnn_tied_weights import iterate_minibatches, encode
-from lstm_rnn_tied_weights import mask_ips, mask_tss, mask_ports, uniquify_victim, extract_prio
+from lstm_rnn_tied_weights import mask_ips, mask_tss, mask_ports
+from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_prio
 logger = lstm_rnn_tied_weights.logger
 
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
@@ -131,6 +132,7 @@ env['MASKING'] = os.environ.get('MASKING', str())
 env['MASK_IP'] = 'ip' in env['MASKING'].lower()
 env['MASK_TS'] = 'ts' in env['MASKING'].lower()
 env['UNIQUIFY_VICTIM'] = 'true' in os.environ.get('UNIQUIFY_VICTIM', 'true').lower()
+env['MAX_PRIO'] = int(os.environ.get('MAX_PRIO', '0'))
 
 # cutting
 env['CUT'] = os.environ.get('CUT', str())
@@ -331,6 +333,8 @@ if env['MASK_TS']:
     modifier_fns.append(mask_tss)
 if env['UNIQUIFY_VICTIM']:
     modifier_fns.append(lambda incidents: uniquify_victim(incidents, env['VICTIM_IP']))
+if env['MAX_PRIO'] != 0:
+    modifier_fns.append(get_discard_by_prio(lambda p:p<=env['MAX_PRIO']))
 
 def _get_batch(
         alerts,
@@ -421,8 +425,8 @@ if env.get('CUT_NONE', False):
     get_test_batch = lambda: _get_batch(alerts, test_max)
 
 elif env.get('CUT_INC', False):
-    incidents = split(incidents, env['SPLIT'])
-    alerts_train, alerts_val, alerts_test = tuple(map(pool, incidents))
+    incident_cuts = split(incidents, env['SPLIT'])
+    alerts_train, alerts_val, alerts_test = tuple(map(pool, incident_cuts))
 
     get_train_batch = lambda: _get_batch(alerts_train, train_max)
     get_val_batch = lambda: _get_batch(alerts_val, val_max)
@@ -1137,31 +1141,32 @@ uniq, counts = uniq_counts(pool(modify(
     )),
     sort_key=itemgetter(0), sort_reverse=False,
 )
-uniq = np.array(uniq)-1 # asume 1-based indexing, so shift
+uniq = np.array(uniq)
 counts = np.array(counts)
-cnt_array = np.zeros([len(set(uniq[:,0])), len(set(uniq[:,1]))], dtype=int) # asume consecutive integers
+cnt_array = np.zeros([uniq[:,0].max(), uniq[:,1].max()], dtype=int)
+uniq = uniq-1 # incident and prio: 1-indexed, arrays: 0-indexed
 for (i, p), c in zip(uniq, counts):
     cnt_array[i,p] = c
 
 s = "Counts:\n"
-fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+fmt = '{:<11}' + '{:>8}'*cnt_array.shape[1] + '\n'
 s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
 for i in np.arange(cnt_array.shape[0]):
     s += fmt.format(*['Incident '+str(i+1)]+list(cnt_array[i,:]))
 logger.info(s)
 
 s = "Normalised pr. incident:\n"
-fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+fmt = '{:<11}' + '{:>8}'*cnt_array.shape[1] + '\n'
 s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
-fmt = '{:<10}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
+fmt = '{:<11}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
 for i in np.arange(cnt_array.shape[0]):
     s += fmt.format(*['Incident '+str(i+1)]+list((100*cnt_array[i,:]/cnt_array.sum(axis=1)[i])))
 logger.info(s)
 
 s = "Normalised across incident:\n"
-fmt = '{:<10}' + '{:>8}'*cnt_array.shape[1] + '\n'
+fmt = '{:<11}' + '{:>8}'*cnt_array.shape[1] + '\n'
 s += fmt.format('', 'Prio 1', 'Prio 2', 'Prio 3')
-fmt = '{:<10}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
+fmt = '{:<11}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
 for i in np.arange(cnt_array.shape[0]):
     s += fmt.format(*['Incident '+str(i+1)]+list(100*cnt_array[i,:]/cnt_array.sum()))
 logger.info(s)

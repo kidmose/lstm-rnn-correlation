@@ -513,14 +513,26 @@ def uniquify_victim(incidents, oldip):
         for incidentid, alerts in incidents
     ]
 
+
+prio_from_alert = lambda alert: int(re.match('.*\[Priority: ([0-9]+)\].*', alert).group(1))
+prio_from_alerts = lambda alerts: map(prio_from_alert, alerts)
+
 def extract_prio(incidents):
     logger.info('Extracting priority from alerts in incidents')
-    from_alert = lambda a: int(re.match('.*\[Priority: ([0-9]+)\].*',a).group(1))
-    from_alerts = lambda alerts: map(from_alert, alerts)
     return [
-        (incidentid, map(from_alert, alerts))
+        (incidentid, map(prio_from_alert, alerts))
         for incidentid, alerts in incidents
     ]
+def get_discard_by_prio(key = lambda prio : prio < float('Inf')):
+    def discard_by_prio(incidents):
+        logger.info('Discarding alerts by priority')
+        return [
+                (incidentid, filter(
+                    lambda alert: key(prio_from_alert(alert)), alerts
+                ))
+                for incidentid, alerts in incidents
+        ]
+    return discard_by_prio
 
 def break_down_data(
     items,
