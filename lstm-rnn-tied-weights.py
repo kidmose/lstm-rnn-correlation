@@ -166,8 +166,15 @@ env['MODEL'] = os.environ.get('MODEL', None)
 # Clustering
 env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 
-# Perform tests, i.e. use test data
-env['TEST'] = 'true' in os.environ.get('TEST', str()).lower()
+# Perform tests if EPS and min_samples are set
+try:
+    env['TEST_EPS'] = float(os.environ['TEST_EPS'])
+except:
+    env['TEST_EPS'] = None
+try:
+    env['TEST_MS'] = int(os.environ['TEST_MS'])
+except:
+    env['TEST_MS'] = None
 
 logger.info("Starting.")
 logger.info("env: " + str(env))
@@ -977,8 +984,10 @@ param_plot_save(out_prefix+'cluster_detection_val.pdf')
 
 # In[ ]:
 
-if env['TEST']:
-    logger.info('Continuing to use test data')
+if env['TEST_MS'] and env['TEST_EPS']:
+    logger.info('Continuing to use test data (eps={}, min_samples={})'.format(
+            env['TEST_MS'], env['TEST_EPS'],
+    ))
 else:
     logger.info('Validation results completed, exiting')
     sys.exit(0)
@@ -986,8 +995,8 @@ else:
 
 # In[ ]:
 
-eps = 0.01
-min_samples =10
+eps = env['TEST_EPS']
+min_samples = env['TEST_MS']
 i = epss.tolist().index(eps)
 j = min_sampless.tolist().index(min_samples)
 
