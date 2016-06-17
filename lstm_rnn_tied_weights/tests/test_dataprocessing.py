@@ -20,6 +20,8 @@
 
 import unittest
 import numpy as np
+from pprint import pprint
+import re
 
 import os,sys
 sys.path.insert(1, os.path.join(sys.path[0], '../..'))
@@ -83,4 +85,57 @@ class Test(unittest.TestCase):
             for p in pairs_os]
 
         self.assertSequenceEqual(hashable_pairs_os, hashable_pairs[offset:], msg="Unexpected pairs")
+
+    def test_uniquify_victim(self):
+        # build test data (incidents)
+        IP = lambda i: "{}.{}.{}.{}".format(i, i, i, i)
+        ALERT = lambda iid, aid: "alert {aid} from incident {iid}, ips: {ip} -> 1.2.3.4".format(aid=aid, iid=iid, ip=IP(iid))
+        ALERT_LIST = lambda iid: [ALERT(iid, aid) for aid in range(1,4)]
+        incidents = [(iid, ALERT_LIST(iid)) for iid in range(1,6)]
+        print("Test incidents:")
+        pprint(incidents)
+
+        # replace a single IP
+        oldip = IP(1)
+        not_replaced = [IP(i) for i in range(2,6)] + ["1.2.3.4"]
+        new_incidents = lstm_rnn_tied_weights.uniquify_victim(incidents, oldip)
+        print("Test incidents, with {} replaced:".format(oldip))
+        pprint(new_incidents)
+        self.assertFalse(
+            oldip in str(new_incidents),
+            msg="{} was not replaced".format(oldip)
+        )
+        for ip in not_replaced:
+            self.assertTrue(
+                ip in str(new_incidents),
+                msg="{} was mistakenly replaced".format(ip)
+            )
+
+        # replace multiple IPs
+        oldips = {IP(i) for i in range(1,6)}
+        not_replaced = ["1.2.3.4"]
+        new_incidents = lstm_rnn_tied_weights.uniquify_victim(incidents, oldips)
+        print("Test incidents, with {} replaced:".format(oldips))
+        pprint(new_incidents)
+        for ip in oldips:
+            self.assertFalse(
+                ip in str(new_incidents),
+                msg="{} was not replaced".format(ip)
+            )
+        for ip in not_replaced:
+            self.assertTrue(
+                ip in str(new_incidents),
+                msg="{} was mistakenly replaced".format(ip)
+            )
+        self.assertEqual(
+            len({re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(incidents))}),
+            5+1,
+            msg="Unexpected number of unique IPs in incidents"
+        )
+        for incident, alert_list in incidents:
+            self.assertEqual(
+                len({re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(incidents))}),
+                1+1,
+                msg="Unexpected number of unique IPs in incident {}".format(incident)
+            )
 
