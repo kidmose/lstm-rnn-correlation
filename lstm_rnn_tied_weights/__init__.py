@@ -493,7 +493,7 @@ def uniquify_victim(incidents, oldips):
     logger.info("Uniquifying victims by replacing with random IPs (Same one within incident)")
     incidentids, alertlists = zip(*incidents)
     assert len(set(incidentids)) == len(incidents), "incidents ids must be unique"
-    assert isinstance(oldips, list), "IP to replace must be list"
+    assert isinstance(oldips, list), "IPs to replace must be list (got {})".format(type(oldips))
     assert len(set(incidentids)) == len(oldips), "requires one IP pr incident"
 
     used = set(oldips)

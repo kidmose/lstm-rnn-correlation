@@ -153,9 +153,6 @@ env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
 env['SPLIT'] = [int(el) for el in os.environ.get('SPLIT', '60,20,20').split(',')]
 
-# Metadata
-env['VICTIM_IP'] = '147.32.84.165'
-
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
 env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
@@ -332,29 +329,8 @@ alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 # In[ ]:
 
-# If/what to mask out or modify
-modifier_fns = []
-if env['MASK_IP']:
-    modifier_fns.append(mask_ips)
-if env['MASK_TS']:
-    modifier_fns.append(mask_tss)
-if env['UNIQUIFY_VICTIM']:
-    modifier_fns.append(lambda incidents: uniquify_victim(incidents, env['VICTIM_IP']))
-if env['MAX_PRIO'] != 0:
-    modifier_fns.append(get_discard_by_prio(lambda p:p<=env['MAX_PRIO']))
-
-def _get_batch(
-        alerts,
-        max_pairs,
-        offset=0,
-):
-    for sample in limit(
-            cross_join(alerts, offset=offset),
-            max_pairs,
-    ):
-        yield sample
-
-incidents = load([
+# data source format: (filename, victim_ip)
+data_sources = [
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-132-1/2015-09-09_win3.pcap.shifted.out', #	1
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-114-2/2015-04-22_capture-win2.pcap.shifted.out', #	1
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-22/2013-11-06_capture-win8.pcap.shifted.out', #	1
@@ -383,13 +359,12 @@ incidents = load([
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-142-1/2015-10-23_win7.pcap.shifted.out', #	85
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-47/botnet-capture-20110816-donbot.pcap.shifted.out', #	88
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-65/2014-04-07_capture-win11.pcap.shifted.out', #	90
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', #	100
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', #	184
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', #	317
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', #	328
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', #	390
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', #	395
-'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-49/botnet-capture-20110816-qvod.pcap.shifted.out', #	444
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', 'unknown'), #	100
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', 'unknown'), #	184
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', 'unknown'), #	317
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', 'unknown'), #	328
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', 'unknown'), #	390
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', 'unknown'), #	395
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-128-1/2015-06-07_capture-win12.pcap.shifted.out', #	611
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-1/2015-10-23_win11.pcap.shifted.out', #	839
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-42/botnet-capture-20110810-neris.pcap.shifted.out', #	865
@@ -411,7 +386,32 @@ incidents = load([
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-150-1/2015-12-05_capture-win3.pcap.shifted.out', #	18854
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-3/2013-08-20_capture-win15.pcap.shifted.out', #	38279
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-78-1/2014-05-30_capture-win8.pcap.shifted.out', #	84863
-])
+]
+filenames, victim_ips = map(list, zip(*data_sources))
+
+# If/what to mask out or modify
+modifier_fns = []
+if env['MASK_IP']:
+    modifier_fns.append(mask_ips)
+if env['MASK_TS']:
+    modifier_fns.append(mask_tss)
+if env['UNIQUIFY_VICTIM']:
+    modifier_fns.append(lambda incidents: uniquify_victim(incidents, victim_ips))
+if env['MAX_PRIO'] != 0:
+    modifier_fns.append(get_discard_by_prio(lambda p:p<=env['MAX_PRIO']))
+
+def _get_batch(
+        alerts,
+        max_pairs,
+        offset=0,
+):
+    for sample in limit(
+            cross_join(alerts, offset=offset),
+            max_pairs,
+    ):
+        yield sample
+
+incidents = load(filenames)
 incidents = modify(incidents, modifier_fns)
 alerts = pool(incidents)
 
