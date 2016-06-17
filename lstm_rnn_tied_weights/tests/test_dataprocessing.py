@@ -95,24 +95,8 @@ class Test(unittest.TestCase):
         print("Test incidents:")
         pprint(incidents)
 
-        # replace a single IP
-        oldip = IP(1)
-        not_replaced = [IP(i) for i in range(2,6)] + ["1.2.3.4"]
-        new_incidents = lstm_rnn_tied_weights.uniquify_victim(incidents, oldip)
-        print("Test incidents, with {} replaced:".format(oldip))
-        pprint(new_incidents)
-        self.assertFalse(
-            oldip in str(new_incidents),
-            msg="{} was not replaced".format(oldip)
-        )
-        for ip in not_replaced:
-            self.assertTrue(
-                ip in str(new_incidents),
-                msg="{} was mistakenly replaced".format(ip)
-            )
-
         # replace multiple IPs
-        oldips = {IP(i) for i in range(1,6)}
+        oldips = [IP(i) for i in range(1,6)]
         not_replaced = ["1.2.3.4"]
         new_incidents = lstm_rnn_tied_weights.uniquify_victim(incidents, oldips)
         print("Test incidents, with {} replaced:".format(oldips))
@@ -127,15 +111,19 @@ class Test(unittest.TestCase):
                 ip in str(new_incidents),
                 msg="{} was mistakenly replaced".format(ip)
             )
+        ips = set(re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(new_incidents)))
+        num_ips = len(ips)
         self.assertEqual(
-            len({re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(incidents))}),
+            num_ips,
             5+1,
-            msg="Unexpected number of unique IPs in incidents"
+            msg="Unexpected number of unique IPs in incidents: {}".format(ips),
         )
         for incident, alert_list in incidents:
+            ips = set(re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(alert_list)))
+            num_ips = len(ips)
             self.assertEqual(
-                len({re.findall(lstm_rnn_tied_weights.PATTERN_IP, str(incidents))}),
+                num_ips,
                 1+1,
-                msg="Unexpected number of unique IPs in incident {}".format(incident)
+                msg="Unexpected number of unique IPs in incident {}: {}".format(incident, ips)
             )
 

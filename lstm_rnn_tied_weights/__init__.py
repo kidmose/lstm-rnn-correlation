@@ -486,33 +486,37 @@ def mask_ports(incidents):
         for incidentid, alerts in incidents
     ]
 
-def uniquify_victim(incidents, oldip):
+def uniquify_victim(incidents, oldips):
+    """
+    Replaces specified IPs in incidents with random ones
+    """
     logger.info("Uniquifying victims by replacing with random IPs (Same one within incident)")
     incidentids, alertlists = zip(*incidents)
     assert len(set(incidentids)) == len(incidents), "incidents ids must be unique"
+    assert isinstance(oldips, list), "IP to replace must be list"
+    assert len(set(incidentids)) == len(oldips), "requires one IP pr incident"
 
+    used = set(oldips)
     def get_random_ip(used, seed=None):
         np.random.seed(seed)
         ip = netaddr.IPAddress('.'.join(
-                [str(octet) for octet in np.random.randint(256, size=(4))]
-            ))
+            [str(octet) for octet in np.random.randint(256, size=(4))]
+        ))
         if str(ip) not in used and ip.is_unicast() and not ip.is_loopback():
             return str(ip)
         else:
             return get_random_ip(used)
-
-    ips = dict()
-    used = {oldip}
+    newips = dict() # {incident id : new IP}
     for i in incidentids:
-        ips[i] = get_random_ip(used, seed=i)
-        used = ips[i]
-    logger.info("New IPs: " + str(ips))
+        newips[i] = get_random_ip(used, seed=i)
+        used.add(newips[i])
+    logger.info("New IPs: " + str(newips))
 
+    oldips_d = {iid: oip for (iid, oip) in zip(incidentids, oldips)}
     return [
-        (incidentid, replace_re_in_alerts(alerts, oldip, ips[incidentid]))
+        (incidentid, replace_re_in_alerts(alerts, oldips_d[incidentid], newips[incidentid]))
         for incidentid, alerts in incidents
     ]
-
 
 prio_from_alert = lambda alert: int(re.match('.*\[Priority: ([0-9]+)\].*', alert).group(1))
 prio_from_alerts = lambda alerts: map(prio_from_alert, alerts)
@@ -523,6 +527,7 @@ def extract_prio(incidents):
         (incidentid, map(prio_from_alert, alerts))
         for incidentid, alerts in incidents
     ]
+
 def get_discard_by_prio(key = lambda prio : prio < float('Inf')):
     def discard_by_prio(incidents):
         logger.info('Discarding alerts by priority')
