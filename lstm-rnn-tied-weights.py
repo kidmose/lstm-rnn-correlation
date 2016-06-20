@@ -359,12 +359,13 @@ data_sources = [
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-142-1/2015-10-23_win7.pcap.shifted.out', #	85
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-47/botnet-capture-20110816-donbot.pcap.shifted.out', #	88
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-65/2014-04-07_capture-win11.pcap.shifted.out', #	90
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', 'unknown'), #	100
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', 'unknown'), #	184
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', 'unknown'), #	317
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', 'unknown'), #	328
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', 'unknown'), #	390
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', 'unknown'), #	395
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', '147.32.84.165'), #	100
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', '10.0.2.106'), #	184
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', '10.0.2.16'), #	317
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', '192.168.0.9'), #	328
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', '10.0.2.102'), #	390
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', '10.0.2.102'), #	395
+('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-49/botnet-capture-20110816-qvod.pcap.shifted.out', '147.32.84.165'), #	444
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-128-1/2015-06-07_capture-win12.pcap.shifted.out', #	611
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-1/2015-10-23_win11.pcap.shifted.out', #	839
 #'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-42/botnet-capture-20110810-neris.pcap.shifted.out', #	865
