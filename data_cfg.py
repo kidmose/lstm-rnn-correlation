@@ -81,7 +81,7 @@ data.columns = ['filename', 'victim_ip']
 data['incident'] = map(str, np.arange(data.shape[0])+1)
 
 data.loc[data.shape[0]] =[
-    'data/own-recordings/filteredalerts.log',
+    'data/own-recordings/alerts.log.1465471791',
     'benign', # Victim IP - None in benign
     'benign', # Benign, So 'None' (None, empty object, is dropped when joining)
 ]
