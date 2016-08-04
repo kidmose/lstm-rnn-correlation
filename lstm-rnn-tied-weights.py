@@ -83,6 +83,7 @@ import scipy as sp
 import theano
 import theano.tensor as T
 import matplotlib
+import pandas as pd
 
 import lasagne
 from lasagne.layers import *
@@ -127,26 +128,6 @@ if not isinstance(env['version'], str):
 # OMP
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 
-# Masking/modifying
-env['MASKING'] = os.environ.get('MASKING', str())
-env['MASK_IP'] = 'ip' in env['MASKING'].lower()
-env['MASK_TS'] = 'ts' in env['MASKING'].lower()
-env['UNIQUIFY_VICTIM'] = 'true' in os.environ.get('UNIQUIFY_VICTIM', 'true').lower()
-env['MAX_PRIO'] = int(os.environ.get('MAX_PRIO', '0'))
-
-# cutting
-env['CUT'] = os.environ.get('CUT', str())
-if 'none' in env['CUT'].lower():
-    env['CUT_NONE'] = True
-elif 'inc' in env['CUT'].lower():
-    env['CUT_INC'] = True
-elif 'alert' in env['CUT'].lower():
-    env['CUT_ALERT'] = True
-elif 'pair' in env['CUT'].lower():
-    env['CUT_PAIR'] = True
-else:
-    raise NotImplementedError("Please set CUT={none|inc|alert|pair} (CUT={})".format(env['CUT']))
-
 # Data control
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 1000000))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
@@ -177,6 +158,15 @@ logger.info("Starting.")
 logger.info("env: " + str(env))
 for k in sorted(env.keys()):
     logger.info('env[\'{}\']: {}'.format(k,env[k]))
+
+
+# In[ ]:
+
+seed = 1470300368 # Unix time at time of writing
+def rndseed():
+    global seed
+    seed += 1
+    return seed
 
 
 # ## Build network
@@ -325,153 +315,82 @@ logger.debug("Spent {}s compilling.".format(time.time()-t))
 alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 
-# ## Prepare data
+# ## Load data
 
 # In[ ]:
 
-# data source format: (filename, victim_ip)
-data_sources = [
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-132-1/2015-09-09_win3.pcap.shifted.out', #	1
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-114-2/2015-04-22_capture-win2.pcap.shifted.out', #	1
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-22/2013-11-06_capture-win8.pcap.shifted.out', #	1
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-121-1/2015-04-22_capture-win5.pcap.shifted.out', #	1
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-15/2013-09-28_capture-win19.pcap.shifted.out', #	2
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-129-1/2015-06-30_capture-win20.pcap.shifted.out', #	3
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-45/botnet-capture-20110815-rbot-dos-icmp.pcap.shifted.out', #	3
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-143-1/2015-10-23_win6.pcap.shifted.out', #	3
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-59/2014-03-12_capture-win15.pcap.shifted.out', #	4
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-45/botnet-capture-20110815-rbot-dos-icmp-more-bandwith.pcap.shifted.out', #	4
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-123-1/2015-04-22_capture-win8.pcap.shifted.out', #	4
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-14/2013-10-18_capture-win15.pcap.shifted.out', #	5
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-45/botnet-capture-20110815-rbot-dos.pcap.shifted.out', #	5
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-118-1/2015-04-20_capture-win5.pcap.shifted.out', #	6
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-92/192.168.3.104-eldorado2-1.pcap.shifted.out', #	6
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-48/botnet-capture-20110816-sogou.pcap.shifted.out', #	10
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-60/2014-03-12_win20.pcap.shifted.out', #	12
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-11/capture-win19.pcap.shifted.out', #	13
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-102/capture-win2.pcap.shifted.out', #	13
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-90/192.168.3.104-unvirus.pcap.shifted.out', #	18
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-134-1/2015-10-11_win3.pcap.shifted.out', #	20
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-26/2013-10-30_capture-win10.pcap.shifted.out', #	21
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-114-1/2015-04-09_capture-win2.pcap.shifted.out', #	22
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-73/2014-05-16_capture-win15.pcap.shifted.out', #	28
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-24/2013-11-06_capture-win18.pcap.shifted.out', #	29
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-142-1/2015-10-23_win7.pcap.shifted.out', #	85
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-47/botnet-capture-20110816-donbot.pcap.shifted.out', #	88
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-65/2014-04-07_capture-win11.pcap.shifted.out', #	90
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-46/botnet-capture-20110815-fast-flux.pcap.shifted.out', '147.32.84.165'), #	100
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-113-1/2015-03-12_capture-win6.pcap.shifted.out', '10.0.2.106'), #	184
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-2/2013-08-20_capture-win2.pcap.shifted.out', '10.0.2.16'), #	317
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-116-1/2012-05-25-capture-1.pcap.shifted.out', '192.168.0.9'), #	328
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-89-1/2014-09-15_capture-win2.pcap.shifted.out', '10.0.2.102'), #	390
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-36/capture-win2.pcap.shifted.out', '10.0.2.102'), #	395
-('data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-49/botnet-capture-20110816-qvod.pcap.shifted.out', '147.32.84.165'), #	444
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-128-1/2015-06-07_capture-win12.pcap.shifted.out', #	611
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-1/2015-10-23_win11.pcap.shifted.out', #	839
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-42/botnet-capture-20110810-neris.pcap.shifted.out', #	865
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-55/capture-win13.pcap.shifted.out', #	954
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-140-2/2015-10-27_capture-win11.pcap.shifted.out', #	1354
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-141-1/2015-23-10_win10.pcap.shifted.out', #	1548
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-69/2014-04-07_capture-win17.pcap.shifted.out', #	1704
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-43/botnet-capture-20110811-neris.pcap.shifted.out', #	1785
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-54/botnet-capture-20110815-fast-flux-2.pcap.shifted.out', #	2015
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-100/2014-12-20_capture-win5.pcap.shifted.out', #	2685
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-35-1/2014-01-31_capture-win7.pcap.shifted.out', #	3199
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-2/2015-12-09_capture-win4.pcap.shifted.out', #	3817
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-127-1/2015-06-07_capture-win8.pcap.shifted.out', #	4900
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-44/botnet-capture-20110812-rbot.pcap.shifted.out', #	5338
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-149-1/2015-12-09_capture-win4.pcap.shifted.out', #	5896
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-126-1/2015-06-07_capture-win7.pcap.shifted.out', #	6992
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-125-1/2015-06-07_capture-win5.pcap.shifted.out', #	7461
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-110-4/2015-04-22_capture-win9.pcap.shifted.out', #	17501
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-150-1/2015-12-05_capture-win3.pcap.shifted.out', #	18854
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-3/2013-08-20_capture-win15.pcap.shifted.out', #	38279
-#'data/mcfp.felk.cvut.cz/publicDatasets/CTU-Malware-Capture-Botnet-78-1/2014-05-30_capture-win8.pcap.shifted.out', #	84863
-]
-filenames, victim_ips = map(list, zip(*data_sources))
-
-# If/what to mask out or modify
-modifier_fns = []
-if env['MASK_IP']:
-    modifier_fns.append(mask_ips)
-if env['MASK_TS']:
-    modifier_fns.append(mask_tss)
-if env['UNIQUIFY_VICTIM']:
-    modifier_fns.append(lambda incidents: uniquify_victim(incidents, victim_ips))
-if env['MAX_PRIO'] != 0:
-    modifier_fns.append(get_discard_by_prio(lambda p:p<=env['MAX_PRIO']))
-
-def _get_batch(
-        alerts,
-        max_pairs,
-        offset=0,
-):
-    for sample in limit(
-            cross_join(alerts, offset=offset),
-            max_pairs,
-    ):
-        yield sample
-
-incidents = load(filenames)
-incidents = modify(incidents, modifier_fns)
-alerts = pool(incidents)
-
-pair_cnt = min([env['MAX_PAIRS'], len(alerts)**2])
-logger.info('Maximum possible pairs; pair_cnt={} env[\'MAX_PAIRS\']={}, len(alerts)**2={}'.format(
-        pair_cnt,
-        env['MAX_PAIRS'],
-        len(alerts)**2,
-    ))
-maxes = (np.array(env['SPLIT'])/sum(env['SPLIT'])*pair_cnt).astype(int)
-logger.info('train, val and test max pairs: {}'.format(maxes))
-train_max, val_max, test_max = maxes
-logger.info('Breakdown of original data:\n'+break_down_data([i[0] for i in pool(incidents)])+'\n')
-
-if env.get('CUT_NONE', False):
-    get_train_batch = lambda: _get_batch(alerts, train_max)
-    get_val_batch = lambda: _get_batch(alerts, val_max)
-    get_test_batch = lambda: _get_batch(alerts, test_max)
-
-elif env.get('CUT_INC', False):
-    incident_cuts = split(incidents, env['SPLIT'])
-    alerts_train, alerts_val, alerts_test = tuple(map(pool, incident_cuts))
-
-    get_train_batch = lambda: _get_batch(alerts_train, train_max)
-    get_val_batch = lambda: _get_batch(alerts_val, val_max)
-    get_test_batch = lambda: _get_batch(alerts_test, test_max)
-
-elif env.get('CUT_ALERT', False):
-    alerts_train, alerts_val, alerts_test = split(alerts, env['SPLIT'])
-
-    get_train_batch = lambda: _get_batch(alerts_train, train_max)
-    get_val_batch = lambda: _get_batch(alerts_val, val_max)
-    get_test_batch = lambda: _get_batch(alerts_test, test_max)
-
-elif env.get('CUT_PAIR', False):
-    get_train_batch = lambda: _get_batch(alerts, train_max, offset=0)
-    get_val_batch = lambda: _get_batch(alerts, val_max, offset=train_max)
-    get_test_batch = lambda: _get_batch(alerts, test_max, offset=train_max+val_max)
-
-else:
-    raise NotImplementedError("No cut selected")
+# Test data
+test_incidents = np.array(['1', '2', 'benign']*2)
+test_alerts = np.array(
+    [
+        'alert %s of incident %s' % (a, i)
+         for i, a in zip(test_incidents, np.arange(len(test_incidents)))
+    ]
+)
+test_data1 = pd.DataFrame(
+    np.concatenate([test_incidents.reshape(6, 1), test_alerts.reshape(6, 1)], axis=1),
+    columns=['incident', 'alert']
+)
+test_data1['cut'] = 0
+test_data2 = test_data1.copy()[:2]
+test_data2['cut'] = 1
+test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 
 # In[ ]:
 
-a1, a2, m1, m2, cor, inc1, inc2 = range(7)
-for cut, batch_fn in [
-    ('training', get_train_batch),
-    ('validation', get_val_batch),
-    ('testing', get_test_batch),
-]:
-    logger.info(
-        'Breakdown of {} data;\n'.format(cut) +
-        break_down_data(batch_fn(), [
-                ('correlation', itemgetter(cor)),
-                ('incident 1', itemgetter(inc1)),
-                ('incident 2', itemgetter(inc2)),
-            ])
-    )
+data = test_data
+
+
+# ## Encode
+
+# In[ ]:
+
+max_len = data['alert'].apply(len).max()
+
+def encode_alert(alert):
+    encoded_alert = np.zeros(max_len, dtype='int8')
+    encoded_alert[:len(alert)] = map(ord, alert)
+    return encoded_alert
+
+def build_mask(encoded_alert):
+    mask = (encoded_alert > 0).astype('int8')
+    return mask
+
+# Test
+test_alert = data['alert'][0]
+test_encoded_alert = encode_alert(test_alert)
+test_mask = build_mask(test_encoded_alert)
+assert ''.join(map(chr,test_encoded_alert[test_mask.astype(bool)])) == test_alert,    "First alert cannot be encoded and decoded: %s" % test_alert
+
+data['encoded_alert'] = data['alert'].apply(encode_alert)
+data['mask'] = data['encoded_alert'].apply(build_mask)
+
+# incident as int, -1 represent benign
+data['incident'] = pd.to_numeric(data['incident'], errors='coerce').fillna(-1).astype(int)
+
+
+# ## Build pairs
+
+# In[ ]:
+
+# Test cartesian
+test_pairs = pd.merge(test_data, test_data, on='cut')
+assert len(test_pairs) ==     len(test_data[test_data['cut']==0])**2 +    len(test_data[test_data['cut']==1])**2
+assert len(test_pairs[test_pairs['cut']==0]) == len(test_data[test_data['cut']==0])**2
+assert len(test_pairs[test_pairs['cut']==1]) == len(test_data[test_data['cut']==1])**2
+
+# Implement cartesian
+pairs = pd.merge(data, data, on='cut')
+
+# calculate correlation
+def is_correlated(row):
+    """
+    row[0], row[1] : ints for incidents, with benign encoded as -1
+    """
+    return (row[0]!=-1) & (row[1]!=-1) & (row[0]==row[1])
+
+pairs['cor'] = pairs[['incident_x', 'incident_y']].apply(is_correlated, raw=True, axis=1)
 
 
 # ## Load model
@@ -488,6 +407,26 @@ if env['MODEL']:
     values = [np.array(model['model'][p.name]) for p in params]
 
     set_all_param_values(cos_net, values)
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
 
 
 # ## Train
