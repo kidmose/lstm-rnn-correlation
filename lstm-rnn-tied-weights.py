@@ -319,6 +319,8 @@ alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 # In[ ]:
 
+data = pd.read_csv('data/own-recordings/alerts-merged-cleaned.log.1465471791')
+
 # Test data
 test_incidents = np.array(['1', '2', 'benign']*2)
 test_alerts = np.array(
@@ -339,7 +341,10 @@ test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 # In[ ]:
 
-data = test_data
+n = 10
+print('Limiting to %.3e samples' % n)
+data = data_tmp.sample(n)
+print('Expecting %.3e pairs' % ((n * np.array([0.6, 0.2, 0.2])) ** 2).sum())
 
 
 # ## Encode
@@ -358,7 +363,7 @@ def build_mask(encoded_alert):
     return mask
 
 # Test
-test_alert = data['alert'][0]
+test_alert = data['alert'].iloc[0]
 test_encoded_alert = encode_alert(test_alert)
 test_mask = build_mask(test_encoded_alert)
 assert ''.join(map(chr,test_encoded_alert[test_mask.astype(bool)])) == test_alert,    "First alert cannot be encoded and decoded: %s" % test_alert
@@ -391,6 +396,9 @@ def is_correlated(row):
     return (row[0]!=-1) & (row[1]!=-1) & (row[0]==row[1])
 
 pairs['cor'] = pairs[['incident_x', 'incident_y']].apply(is_correlated, raw=True, axis=1)
+assert sum(data.groupby('cut').size()**2) == len(pairs)
+
+print('%e' % len(pairs))
 
 
 # ## Load model
