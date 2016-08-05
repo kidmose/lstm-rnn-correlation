@@ -169,6 +169,22 @@ def rndseed():
     return seed
 
 
+# In[ ]:
+
+class Timer(object):
+    def __init__(self, name=''):
+        self.name = name
+    
+    def __enter__(self):
+        self.start = time.time()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.dur = datetime.timedelta(seconds=self.end - self.start)
+        logger.info('Timer(%s): %s' % (self.name, self.dur))
+
+
 # ## Build network
 
 # In[ ]:
@@ -339,14 +355,6 @@ test_data2['cut'] = 1
 test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 
-# In[ ]:
-
-n = 10
-print('Limiting to %.3e samples' % n)
-data = data_tmp.sample(n)
-print('Expecting %.3e pairs' % ((n * np.array([0.6, 0.2, 0.2])) ** 2).sum())
-
-
 # ## Encode
 
 # In[ ]:
@@ -375,30 +383,82 @@ data['mask'] = data['encoded_alert'].apply(build_mask)
 data['incident'] = pd.to_numeric(data['incident'], errors='coerce').fillna(-1).astype(int)
 
 
-# ## Build pairs
+# ## Cut data, pairing
 
 # In[ ]:
 
-# Test cartesian
-test_pairs = pd.merge(test_data, test_data, on='cut')
-assert len(test_pairs) ==     len(test_data[test_data['cut']==0])**2 +    len(test_data[test_data['cut']==1])**2
-assert len(test_pairs[test_pairs['cut']==0]) == len(test_data[test_data['cut']==0])**2
-assert len(test_pairs[test_pairs['cut']==1]) == len(test_data[test_data['cut']==1])**2
+def get_pairs(data):
+    KEY = 'DUMMY_MERGE_KEY'
+    assert KEY not in data.columns
+    data = data.copy(deep=False)
+    data[KEY] = 0
+    pairs = pd.merge(data, data, on=KEY)
+    pairs.drop(KEY , axis=1, inplace=True)
+    return pairs
 
-# Implement cartesian
-pairs = pd.merge(data, data, on='cut')
+# Test get_pairs
+test_pairs = get_pairs(test_data)
+assert len(test_pairs) == len(test_data) ** 2
 
-# calculate correlation
 def is_correlated(row):
     """
     row[0], row[1] : ints for incidents, with benign encoded as -1
     """
     return (row[0]!=-1) & (row[1]!=-1) & (row[0]==row[1])
 
-pairs['cor'] = pairs[['incident_x', 'incident_y']].apply(is_correlated, raw=True, axis=1)
-assert sum(data.groupby('cut').size()**2) == len(pairs)
+assert is_correlated([0, 0]), "Same incident must result in true"
+assert not is_correlated([0, 1]), "Different incident must result in false"
+assert not is_correlated([0, -1]), "Benign must result in false"
+assert not is_correlated([-1, -1]), "Benign must result in false"
 
-print('%e' % len(pairs))
+def add_cor_col(pairs):
+    pairs = pairs.copy(deep=False)
+    pairs['cor'] = pairs[['incident_x', 'incident_y']].apply(is_correlated, raw=True, axis=1)
+    return pairs
+    
+def shuffle(pairs):
+    np.random.seed(rndseed())
+    return pairs.reindex(np.random.permutation(pairs.index))
+
+def downsample_benign(data):
+    """
+    Downsample benign to make up 50 percent of all
+    """
+    malicious = data[(data['incident']!=-1)]
+    benign = data[(data['incident']==-1)]
+    benign = benign.sample(n=len(malicious), random_state=rndseed())
+    return pd.concat([benign, malicious])
+
+def take_and_modify_cut(data, cut):
+    data = downsample_benign(data[(data['cut']==cut)])
+    pairs = get_pairs(data)
+    pairs = shuffle(pairs)
+    pairs = add_cor_col(pairs)
+    return pairs
+
+pairs_train = take_and_modify_cut(data, 0)
+pairs_val = take_and_modify_cut(data, 1)
+pairs_test = take_and_modify_cut(data, 2)
+
+
+# In[ ]:
+
+def iterate_minibatches(pairs, batch_size):
+    ii = 0
+    assert len(pairs) >= batch_size,         "{} samples is not enough to produce a minibatch of {} samples"        .format(len(pairs), batch_size)
+    logger.info('Expect %d minibatches' % (len(pairs)//batch_size))
+    while len(pairs) - ii * batch_size >= batch_size:
+        begin = ii * batch_size
+        ii += 1
+        end = ii * batch_size
+        logger.debug("Producing minibatch no. %d" % ii)
+        batch = pairs.iloc[begin:end]
+        inputs1 = np.array(batch['encoded_alert_x'].values.tolist())
+        inputs2 = np.array(batch['encoded_alert_y'].values.tolist())
+        masks1 = np.array(batch['mask_x'].values.tolist())
+        masks2 = np.array(batch['mask_y'].values.tolist())
+        targets = np.array(batch['cor'].values.tolist())
+        yield inputs1, inputs2, masks1, masks2, targets
 
 
 # ## Load model
@@ -417,26 +477,6 @@ if env['MODEL']:
     set_all_param_values(cos_net, values)
 
 
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
 # ## Train
 
 # In[ ]:
@@ -445,32 +485,33 @@ if not env['MODEL']:
     logger.info("Starting training...")
     for epoch in range(env['EPOCHS']):
         train_err = 0
-        train_batches = 0
-        start_time = time.time()
-        for batch in iterate_minibatches(get_train_batch(), env['BATCH_SIZE']):
-            train_err += train_fn(*batch)
-            train_batches += 1
-            logger.debug('Batch complete')
+        train_mbatches = 0
+        start_epoch = time.time()
+        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE']):
+            start_mbatch = time.time()
+            train_err += train_fn(*mbatch)
+            train_mbatches += 1
+            n_pairs_mbatch = mbatch[0].shape[0]
+            speed = n_pairs_mbatch/(time.time()-start_mbatch)
+            logger.debug('Miniatch completed. speed=%d [pairs/sec]' % speed)
+        
+        val_err = 0
+        val_acc = 0
+        val_mbatches = 0
+        for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE']):
+            err, acc = val_fn(*batch)
+            val_err += err
+            val_acc += acc
+            val_batches += 1
+        
+        logger.info("  training loss:\t\t{:.20f}".format(train_err / train_mbatches))
+        logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_mbatches))
+        logger.info("  validation accuracy:\t\t{:.2f} %".format(
+            val_acc / val_mbatches * 100))
 
-        #if (epoch+1) % (env['EPOCHS']/10) == 0:
-        if True:
-            val_err = 0
-            val_acc = 0
-            val_batches = 0
-            for batch in iterate_minibatches(get_val_batch(), env['BATCH_SIZE']):
-                err, acc = val_fn(*batch)
-                val_err += err
-                val_acc += acc
-                val_batches += 1
-
-            logger.info("Epoch {} of {} took {:.3f}s".format(
-                epoch + 1, env['EPOCHS'], time.time() - start_time))
-            logger.info("  training loss:\t\t{:.20f}".format(train_err / train_batches))
-            logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
-            logger.info("  validation accuracy:\t\t{:.2f} %".format(
-                val_acc / val_batches * 100))
-
-        logger.debug('Epoch complete')
+        end_epoch = time.time()
+        dur_epoch = end_epoch-start_epoch
+        logger.info("Completed epoch %s of %d, time=%.3f[sec]"                     % (epoch + 1, env['EPOCHS'], dur_epoch))
     logger.info('Training complete')
 
 
