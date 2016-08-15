@@ -129,7 +129,7 @@ if not isinstance(env['version'], str):
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 
 # Data control
-env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 1000000))
+env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
 env['SPLIT'] = [int(el) for el in os.environ.get('SPLIT', '60,20,20').split(',')]
@@ -323,12 +323,10 @@ test_acc = T.mean(T.eq(test_prediction > 0.5, target_var),
 train_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], loss, updates=updates)
 val_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], [test_loss, test_acc])
 prediction_fn = theano.function([input_var, input_var2, mask_var, mask_var2], prediction)
-logger.debug("Spent {}s compilling.".format(time.time()-t))
-
-
-# In[ ]:
 
 alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
+
+logger.debug("Spent {}s compilling.".format(time.time()-t))
 
 
 # ## Load data
@@ -443,8 +441,11 @@ pairs_test = take_and_modify_cut(data, 2)
 
 # In[ ]:
 
-def iterate_minibatches(pairs, batch_size):
-    ii = 0
+def iterate_minibatches(pairs, batch_size, max_pairs=0):
+    ii = 0 # minibatch counter
+    if max_pairs != 0:
+        logger.debug('Limiting to {}'.format(max_pairs))
+        pairs = pairs.head(max_pairs)
     assert len(pairs) >= batch_size,         "{} samples is not enough to produce a minibatch of {} samples"        .format(len(pairs), batch_size)
     logger.info('Expect %d minibatches' % (len(pairs)//batch_size))
     while len(pairs) - ii * batch_size >= batch_size:
@@ -487,23 +488,23 @@ if not env['MODEL']:
         train_err = 0
         train_mbatches = 0
         start_epoch = time.time()
-        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE']):
+        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
             start_mbatch = time.time()
             train_err += train_fn(*mbatch)
             train_mbatches += 1
             n_pairs_mbatch = mbatch[0].shape[0]
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
-            logger.debug('Miniatch completed. speed=%d [pairs/sec]' % speed)
+            logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
         
         val_err = 0
         val_acc = 0
         val_mbatches = 0
-        for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE']):
-            err, acc = val_fn(*batch)
+        for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE'], env['MAX_PAIRS']):
+            err, acc = val_fn(*mbatch)
             val_err += err
             val_acc += acc
-            val_batches += 1
-        
+            val_mbatches += 1
+
         logger.info("  training loss:\t\t{:.20f}".format(train_err / train_mbatches))
         logger.info("  validation loss:\t\t{:.6f}".format(val_err / val_mbatches))
         logger.info("  validation accuracy:\t\t{:.2f} %".format(
