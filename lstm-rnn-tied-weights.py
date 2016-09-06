@@ -485,7 +485,6 @@ if env['MODEL']:
 if not env['MODEL']:
     logger.info("Starting training...")
     for epoch in range(env['EPOCHS']):
-        train_err = 0
         train_mbatches = 0
         start_epoch = time.time()
         for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
@@ -496,6 +495,15 @@ if not env['MODEL']:
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
             logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
         
+        train_err = 0
+        train_acc = 0
+        train_mbatches = 0
+        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
+            err, acc = val_fn(*mbatch)
+            train_err += err
+            train_acc += acc
+            train_mbatches += 1
+            
         val_err = 0
         val_acc = 0
         val_mbatches = 0
