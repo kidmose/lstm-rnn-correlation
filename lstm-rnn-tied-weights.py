@@ -489,7 +489,7 @@ if not env['MODEL']:
         start_epoch = time.time()
         for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
             start_mbatch = time.time()
-            train_fn(*mbatch)
+            train_err += train_fn(*mbatch)
             train_mbatches += 1
             n_pairs_mbatch = mbatch[0].shape[0]
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
@@ -514,9 +514,9 @@ if not env['MODEL']:
             val_mbatches += 1
 
         logger.info("  training loss:\t\t{:.20f}".format(train_err / train_mbatches))
-        logger.info("  training accuracy:\t\t{:.6f}".format(train_acc / train_mbatches * 100))
+        logger.info("  training accuracy:\t\t{:.2f} %".format(val_err / train_mbatches * 100))
         logger.info("  validation loss:\t\t{:.20f}".format(val_err / val_mbatches))
-        logger.info("  validation accuracy:\t\t{:.6f} %".format(val_acc / val_mbatches * 100))
+        logger.info("  validation accuracy:\t\t{:.2f} %".format(val_acc / val_mbatches * 100))
 
         end_epoch = time.time()
         dur_epoch = end_epoch-start_epoch
