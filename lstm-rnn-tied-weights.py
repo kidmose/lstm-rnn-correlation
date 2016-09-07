@@ -182,7 +182,7 @@ class Timer(object):
     def __exit__(self, *args):
         self.end = time.time()
         self.dur = datetime.timedelta(seconds=self.end - self.start)
-        logger.info('Timer(%s):\t%s' % (self.name, self.dur))
+        logger.debug('Timer(%s):\t%s' % (self.name, self.dur))
 
 
 # ## Build network
