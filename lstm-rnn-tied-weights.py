@@ -132,7 +132,6 @@ env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
-env['SPLIT'] = [int(el) for el in os.environ.get('SPLIT', '60,20,20').split(',')]
 
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
