@@ -174,15 +174,16 @@ def rndseed():
 class Timer(object):
     def __init__(self, name=''):
         self.name = name
-    
+        
     def __enter__(self):
+        logger.debug('Timer(%s) started' % (self.name, ))
         self.start = time.time()
         return self
 
     def __exit__(self, *args):
         self.end = time.time()
         self.dur = datetime.timedelta(seconds=self.end - self.start)
-        logger.info('Timer(%s): %s' % (self.name, self.dur))
+        logger.info('Timer(%s):\t%s' % (self.name, self.dur))
 
 
 # ## Build network
@@ -305,35 +306,34 @@ cos_net = l_sig
 
 # In[ ]:
 
-# Training Procedure
-t = time.time()
-prediction = get_output(cos_net)
-loss = binary_crossentropy(prediction, target_var)
-loss = loss.mean()
-params = get_all_params(cos_net, trainable=True)
-updates = sgd(loss, params, learning_rate=env['NN_LEARNING_RATE'])
+with Timer('Compiling theano'):
+    # Training Procedure
+    prediction = get_output(cos_net)
+    loss = binary_crossentropy(prediction, target_var)
+    loss = loss.mean()
+    params = get_all_params(cos_net, trainable=True)
+    updates = sgd(loss, params, learning_rate=env['NN_LEARNING_RATE'])
 
-# Testing Procedure
-test_prediction = get_output(cos_net, deterministic=True)
-test_loss = binary_crossentropy(test_prediction, target_var)
-test_loss = test_loss.mean()
-test_acc = T.mean(T.eq(test_prediction > 0.5, target_var),
-                  dtype=theano.config.floatX)
+    # Testing Procedure
+    test_prediction = get_output(cos_net, deterministic=True)
+    test_loss = binary_crossentropy(test_prediction, target_var)
+    test_loss = test_loss.mean()
+    test_acc = T.mean(T.eq(test_prediction > 0.5, target_var),
+                      dtype=theano.config.floatX)
 
-train_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], loss, updates=updates)
-val_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], [test_loss, test_acc])
-prediction_fn = theano.function([input_var, input_var2, mask_var, mask_var2], prediction)
+    train_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], loss, updates=updates)
+    val_fn = theano.function([input_var, input_var2, mask_var, mask_var2, target_var], [test_loss, test_acc])
+    prediction_fn = theano.function([input_var, input_var2, mask_var, mask_var2], prediction)
 
-alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
-
-logger.debug("Spent {}s compilling.".format(time.time()-t))
+    alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 
 # ## Load data
 
 # In[ ]:
 
-data = pd.read_csv('data/own-recordings/alerts-merged-cleaned.log.1465471791')
+with Timer('Load data'):
+    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned.log.1465471791')
 
 # Test data
 test_incidents = np.array(['1', '2', 'benign']*2)
@@ -374,11 +374,12 @@ test_encoded_alert = encode_alert(test_alert)
 test_mask = build_mask(test_encoded_alert)
 assert ''.join(map(chr,test_encoded_alert[test_mask.astype(bool)])) == test_alert,    "First alert cannot be encoded and decoded: %s" % test_alert
 
-data['encoded_alert'] = data['alert'].apply(encode_alert)
-data['mask'] = data['encoded_alert'].apply(build_mask)
+with Timer('Encode alerts'):
+    data['encoded_alert'] = data['alert'].apply(encode_alert)
+    data['mask'] = data['encoded_alert'].apply(build_mask)
 
-# incident as int, -1 represent benign
-data['incident'] = pd.to_numeric(data['incident'], errors='coerce').fillna(-1).astype(int)
+    # incident as int, -1 represent benign
+    data['incident'] = pd.to_numeric(data['incident'], errors='coerce').fillna(-1).astype(int)
 
 
 # ## Cut data, pairing
@@ -434,9 +435,10 @@ def take_and_modify_cut(data, cut):
     pairs = add_cor_col(pairs)
     return pairs
 
-pairs_train = take_and_modify_cut(data, 0)
-pairs_val = take_and_modify_cut(data, 1)
-pairs_test = take_and_modify_cut(data, 2)
+with Timer('Build pairs'):
+    pairs_train = take_and_modify_cut(data, 0)
+    pairs_val = take_and_modify_cut(data, 1)
+    pairs_test = take_and_modify_cut(data, 2)
 
 
 # In[ ]:
@@ -449,16 +451,17 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0):
     assert len(pairs) >= batch_size,         "{} samples is not enough to produce a minibatch of {} samples"        .format(len(pairs), batch_size)
     logger.info('Expect %d minibatches' % (len(pairs)//batch_size))
     while len(pairs) - ii * batch_size >= batch_size:
-        begin = ii * batch_size
-        ii += 1
-        end = ii * batch_size
-        logger.debug("Producing minibatch no. %d" % ii)
-        batch = pairs.iloc[begin:end]
-        inputs1 = np.array(batch['encoded_alert_x'].values.tolist())
-        inputs2 = np.array(batch['encoded_alert_y'].values.tolist())
-        masks1 = np.array(batch['mask_x'].values.tolist())
-        masks2 = np.array(batch['mask_y'].values.tolist())
-        targets = np.array(batch['cor'].values.tolist())
+        with Timer('Minibatch{}'.format(ii)):
+            begin = ii * batch_size
+            ii += 1
+            end = ii * batch_size
+            logger.debug("Producing minibatch no. %d" % ii)
+            batch = pairs.iloc[begin:end]
+            inputs1 = np.array(batch['encoded_alert_x'].values.tolist())
+            inputs2 = np.array(batch['encoded_alert_y'].values.tolist())
+            masks1 = np.array(batch['mask_x'].values.tolist())
+            masks2 = np.array(batch['mask_y'].values.tolist())
+            targets = np.array(batch['cor'].values.tolist())
         yield inputs1, inputs2, masks1, masks2, targets
 
 
@@ -487,9 +490,12 @@ if not env['MODEL']:
     for epoch in range(env['EPOCHS']):
         train_mbatches = 0
         start_epoch = time.time()
+        with Timer('Shuffle, epoch {}'.format(epoch)):
+            pairs_train = shuffle(pairs_train)
         for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
             start_mbatch = time.time()
-            train_err += train_fn(*mbatch)
+            with Timer('Train epoch {}'.format(epoch)):
+                train_err += train_fn(*mbatch)
             train_mbatches += 1
             n_pairs_mbatch = mbatch[0].shape[0]
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
@@ -508,7 +514,8 @@ if not env['MODEL']:
         val_acc = 0
         val_mbatches = 0
         for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE'], env['MAX_PAIRS']):
-            err, acc = val_fn(*mbatch)
+            with Timer('Validation epoch {}'.format(epoch)):
+                err, acc = val_fn(*mbatch)
             val_err += err
             val_acc += acc
             val_mbatches += 1
@@ -521,6 +528,8 @@ if not env['MODEL']:
         end_epoch = time.time()
         dur_epoch = end_epoch-start_epoch
         logger.info("Completed epoch %s of %d, time=%.3f[sec]"                     % (epoch + 1, env['EPOCHS'], dur_epoch))
+        logger.info('Timer(Epoch)\t\t%s' % datetime.timedelta(seconds=dur_epoch))
+        
     logger.info('Training complete')
 
 
