@@ -479,6 +479,13 @@ if env['MODEL']:
 
     set_all_param_values(cos_net, values)
 
+def dump_model(net, filename):
+    model = {'model':{str(p): v.tolist() for p, v in zip(get_all_params(net), get_all_param_values(net))}}
+    logger.info('Saving model to {}'.format(filename))
+    with open(filename, 'w') as f:
+        f.write(json.dumps(model))
+    logger.info('Model saved')
+
 
 # ## Train
 
@@ -522,6 +529,8 @@ if not env['MODEL']:
         logger.info("  training accuracy:\t\t{:.2f} %".format(val_err / train_mbatches * 100))
         logger.info("  validation loss:\t\t{:.20f}".format(val_err / val_mbatches))
         logger.info("  validation accuracy:\t\t{:.2f} %".format(val_acc / val_mbatches * 100))
+        
+        dump_model(cos_net, out_prefix + 'model' + str(epoch).zfill(len(str(env['EPOCHS'])))+ '.json')
 
         end_epoch = time.time()
         dur_epoch = end_epoch-start_epoch
@@ -556,12 +565,7 @@ logger.info("  test accuracy:\t\t{:.2f} %".format(
 
 # In[ ]:
 
-model_file = out_prefix + 'model.json'
-model = {'model':{str(p): v.tolist() for p, v in zip(get_all_params(cos_net), get_all_param_values(cos_net))}}
-logger.info('Saving model to {}'.format(model_file))
-with open(model_file, 'w') as f:
-    f.write(json.dumps(model))
-logger.info('Model saved')
+dump_model(cos_net, out_prefix + 'model.json')
 
 
 # ## Plot
