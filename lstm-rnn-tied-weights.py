@@ -494,8 +494,7 @@ if not env['MODEL']:
             pairs_train = shuffle(pairs_train)
         for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
             start_mbatch = time.time()
-            with Timer('Train epoch {}'.format(epoch)):
-                train_err += train_fn(*mbatch)
+            train_fn(*mbatch)
             train_mbatches += 1
             n_pairs_mbatch = mbatch[0].shape[0]
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
