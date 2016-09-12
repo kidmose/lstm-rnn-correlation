@@ -526,7 +526,7 @@ if not env['MODEL']:
             val_mbatches += 1
 
         logger.info("  training loss:\t\t{:.20f}".format(train_err / train_mbatches))
-        logger.info("  training accuracy:\t\t{:.2f} %".format(val_err / train_mbatches * 100))
+        logger.info("  training accuracy:\t\t{:.2f} %".format(train_acc / train_mbatches * 100))
         logger.info("  validation loss:\t\t{:.20f}".format(val_err / val_mbatches))
         logger.info("  validation accuracy:\t\t{:.2f} %".format(val_acc / val_mbatches * 100))
         
