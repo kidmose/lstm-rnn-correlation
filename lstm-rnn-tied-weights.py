@@ -85,19 +85,15 @@ import theano.tensor as T
 import pandas as pd
 
 import matplotlib
-import matplotlib.pyplot as plt
-
-# might, might not have x available
-try:
+try: # If X is not available select backend not requiring X
     os.environ['DISPLAY']
 except KeyError:
     matplotlib.use('Agg')
-# might, might not be notebook
-try:
+try: # If ipython, do inline
     get_ipython().magic(u'matplotlib inline')
 except NameError:
     pass
-
+import matplotlib.pyplot as plt
 
 import lasagne
 from lasagne.layers import *
