@@ -82,8 +82,22 @@ import numpy as np
 import scipy as sp
 import theano
 import theano.tensor as T
-import matplotlib
 import pandas as pd
+
+import matplotlib
+import matplotlib.pyplot as plt
+
+# might, might not have x available
+try:
+    os.environ['DISPLAY']
+except KeyError:
+    matplotlib.use('Agg')
+# might, might not be notebook
+try:
+    get_ipython().magic(u'matplotlib inline')
+except NameError:
+    pass
+
 
 import lasagne
 from lasagne.layers import *
@@ -464,6 +478,67 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0):
         yield inputs1, inputs2, masks1, masks2, targets
 
 
+# In[ ]:
+
+# Plot Empirical Distribution Functions for model output, by ground truth for correlation
+
+pairs_train_edf_cor = pairs_train[pairs_train['cor']==True].head(1000)
+pairs_train_edf_uncor = pairs_train[pairs_train['cor']==False].head(1000)
+pairs_val_edf_cor = pairs_val[pairs_val['cor']==True].head(1000)
+pairs_val_edf_uncor = pairs_val[pairs_val['cor']==False].head(1000)
+
+_, edf_bins = np.histogram([], bins=100, range=(0,1))
+edf_bin_centers = np.vstack((edf_bins[:-1].T, edf_bins[1:].T)).mean(axis=0)
+
+def get_hist(pairs):
+    inputs1, inputs2, masks1, masks2, targets = next(
+        iterate_minibatches(pairs, batch_size=len(pairs)),
+    )
+    hist, _ = np.histogram(
+        prediction_fn(inputs1, inputs2, masks1, masks2),
+        bins=edf_bins,
+    )
+    return hist
+
+def get_hists():
+    return {
+        'training' : {
+            'correlated' : get_hist(pairs_train_edf_cor),
+            'uncorrelated' : get_hist(pairs_train_edf_uncor),
+        },
+        'validation' : {
+            'correlated' : get_hist(pairs_val_edf_cor),
+            'uncorrelated' : get_hist(pairs_val_edf_uncor),
+        },
+    }
+
+def plot_hists(hists):
+    epochs = sorted(hists.keys())
+    
+    for sett in {'training', 'validation'}:
+        for epoch in epochs:
+            plt.figure()
+            for c in {'correlated', 'uncorrelated'}:
+                plt.plot(
+                    edf_bin_centers,
+                    hists[epoch][sett][c],
+                    label=c,
+                )
+            plt.title(
+                'EDF on %s data, trained for %d epochs' % (sett, epoch),
+            )
+            plt.legend()
+            plt.gca().set_ylim(0, 350)
+            plt.savefig(
+                out_prefix + 'edf_%s_%.2d.pdf' % (sett, epoch),
+                bbox_inches='tight',
+            )
+
+
+hists = dict()
+hists[0] = get_hists()
+
+
 # ## Load model
 
 # In[ ]:
@@ -530,6 +605,8 @@ if not env['MODEL']:
         logger.info("  validation loss:\t\t{:.20f}".format(val_err / val_mbatches))
         logger.info("  validation accuracy:\t\t{:.2f} %".format(val_acc / val_mbatches * 100))
         
+        hists[epoch+1] = get_hists()
+
         dump_model(cos_net, out_prefix + 'model' + str(epoch).zfill(len(str(env['EPOCHS'])))+ '.json')
 
         end_epoch = time.time()
@@ -538,6 +615,13 @@ if not env['MODEL']:
         logger.info('Timer(Epoch)\t\t%s' % datetime.timedelta(seconds=dur_epoch))
         
     logger.info('Training complete')
+
+
+# In[ ]:
+
+logger.debug('Histograms:' + str(hists))
+logger.info('Plotting histograms..')
+plot_hists(hists)
 
 
 # ## Test
@@ -571,17 +655,6 @@ dump_model(cos_net, out_prefix + 'model.json')
 # ## Plot
 
 # In[ ]:
-
-# might, might not have x available
-try:
-    os.environ['DISPLAY']
-except KeyError:
-    matplotlib.use('Agg')
-# might, might not be notebook
-try:
-    get_ipython().magic(u'matplotlib inline')
-except NameError:
-    pass
 
 error_dict = dict()
 
@@ -649,7 +722,6 @@ logger.info('Error rates: \n' + error_rates_latex)
 
 # In[ ]:
 
-import matplotlib.pyplot as plt
 
 index = np.arange(len(labels))
 
