@@ -529,6 +529,7 @@ def plot_hists(hists):
                 out_prefix + 'edf_%s_%.2d.pdf' % (sett, epoch),
                 bbox_inches='tight',
             )
+            plt.close()
 
 
 hists = dict()
