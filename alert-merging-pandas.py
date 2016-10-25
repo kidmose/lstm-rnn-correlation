@@ -19,7 +19,7 @@
 # License along with lstm-rnn-correlation. If not, see
 # <http://www.gnu.org/licenses/>.
 
-# In[1]:
+# In[ ]:
 
 from __future__ import division
 
@@ -29,6 +29,34 @@ import numpy as np
 import re
 import datetime
 import ipaddress
+import socket
+import os
+
+import lstm_rnn_tied_weights
+
+import logging
+logging.getLogger().handlers = []
+logger = lstm_rnn_tied_weights.logger
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
+out_dir = 'output/alert-merging/' + runid
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+out_prefix = out_dir + '/' + runid + '-'
+# info log file
+infofh = logging.FileHandler(out_prefix + 'info.log')
+infofh.setLevel(logging.INFO)
+infofh.setFormatter(logging.Formatter(
+        fmt='%(message)s',
+))
+logger.addHandler(infofh)
+# verbose log file
+vfh = logging.FileHandler(out_prefix + 'verbose.log')
+vfh.setLevel(logging.DEBUG)
+vfh.setFormatter(logging.Formatter(
+        fmt='%(asctime)s - PID:%(process)d - %(levelname)s - %(message)s',
+))
+logger.addHandler(vfh)
+logger.info('Output prefix: '+ out_prefix)
 
 # matplotlib
 try: # might, might not have x available
@@ -50,7 +78,7 @@ def rndseed():
     return seed
 
 
-# In[2]:
+# In[ ]:
 
 IPV4 = '(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3})'
 IPV6 = '(?:[0-9a-f]|:){1,4}(?::(?:[0-9a-f]{0,4})*){1,7}'
@@ -113,8 +141,9 @@ desired_output = '05/04/16-09:38:44.365433  [**] [129:12:1] '+    'Consecutive T
 assert build_line(test_row) == desired_output
 
 
-# In[3]:
+# In[ ]:
 
+logger.info('Loading data')
 from data_cfg import data
 # load files
 data_tmp = DataFrame()
@@ -131,7 +160,7 @@ for index, row in data.iterrows():
 data = data_tmp
 
 
-# In[4]:
+# In[ ]:
 
 difficult_ips = [
     '94.63.149.152',
@@ -161,7 +190,7 @@ for l in difficult_lines:
 # 
 # ## data overview by incident
 
-# In[5]:
+# In[ ]:
 
 def get_data_overview(data):
     df_inc_cnt = DataFrame(data.groupby(['incident']).size().rename('inc_cnt').reset_index())
@@ -181,24 +210,15 @@ def get_data_overview(data):
     df_tot['inc_cnt_pct'] = 100
     df_tot['incident'] = 'total'
 
-    df_overview = pd.concat([df_overview.reset_index(), df_tot.reset_index()])        .groupby(['incident', 'inc_cnt', 'inc_cnt_pct', 'prio', 'inc_prio_cnt', 'inc_prio_cnt_pct', ])        .first().drop('index', 1)
+    df_overview = pd.concat([df_overview.reset_index(), df_tot.reset_index()])        .groupby(['incident', 'inc_cnt', 'inc_cnt_pct', 'prio', ])        .first().drop('index', 1)
 
     return df_overview
 
+logger.info('Overview of unprocessed data')
 df_overview = get_data_overview(data)
+logger.debug(df_overview.to_latex())
+logger.debug(df_overview.to_string())
 df_overview
-
-
-# In[6]:
-
-# print in latex friendly
-_ = """
-for l in np.concatenate([
-    np.array([df_overview.reset_index().columns]),
-    df_overview.reset_index().as_matrix(),
-]):
-    print(('\t&'.join(['{}']*len(l)) + '\\\\\\hline').format(*l))
-"""
 
 
 # ## Discard true alerts found in the false alert set
@@ -213,7 +233,9 @@ for l in np.concatenate([
 # To do this we look at distribution of priority and distribution of rule IDs after discarding.  
 # This is compared to the same prior to discarding. 
 
-# In[7]:
+# In[ ]:
+
+logger.info('Discard by commercial')
 
 def srcip_or_dstip_in_row(row, ip_list):
     return row['srcip'] in ip_list or         row['dstip'] in ip_list
@@ -227,7 +249,7 @@ assert srcip_or_dstip_in_row(test_row, [test_srcip, test_srcip])
 assert not srcip_or_dstip_in_row(test_row, list())
 
 
-# In[8]:
+# In[ ]:
 
 with open('data/own-recordings/commercial-discard-ips.csv') as f:
     ips_discard_commercial = f.readlines()
@@ -241,18 +263,18 @@ idx_disc_com = data.apply(
 assert data[((data['incident']!='benign') & (idx_disc_com))].size == 0, "non-benign should not be discarded"
 
 
-# In[9]:
+# In[ ]:
 
 # on the benign group before discarding
 idx_benign = data['incident'] == 'benign'
 benign_prio_size = data[idx_benign].groupby('prio').size()
 
 
-# In[10]:
+# In[ ]:
 
-print('Priority distribution before and after discard by commercial:')
+logger.info('Priority distribution before and after discard by commercial:')
 disc_com_prio_size = data[idx_benign & (idx_disc_com == False)].groupby('prio').size()
-pd.concat(
+df_prio_before_after_comm = pd.concat(
     [
         benign_prio_size.rename('Count, all benign'), 
         (benign_prio_size/benign_prio_size.sum()*100).rename('Percentage, all benign'),
@@ -262,18 +284,22 @@ pd.concat(
     axis=1,
 )
 
+logger.debug(df_prio_before_after_comm.to_latex())
+logger.debug(df_prio_before_after_comm.to_string())
+df_prio_before_after_comm
 
-# In[11]:
 
-print(
+# In[ ]:
+
+logger.info(
     "Unique rule IDs in orignal benign: %d" % 
     data[idx_benign].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs in alerts discarded by comercial: %d" % 
     data[idx_benign & idx_disc_com].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs after discarding: %d" % 
     data[idx_benign & (idx_disc_com == False)].groupby('rid').size().size
 )
@@ -285,8 +311,9 @@ print(
 # 
 # The same analysis of bias as above is performed.
 
-# In[12]:
+# In[ ]:
 
+logger.info('Discard by manual')
 with open('data/own-recordings/manual-discard-ips.csv') as f:
     ips_discard_manual = f.readlines()
     ips_discard_manual = map(str.strip, ips_discard_manual)
@@ -298,11 +325,11 @@ idx_disc_man = data.apply(
 assert data[((data['incident']!='benign') & (idx_disc_man))].size == 0, "non-benign should not be discarded"
 
 
-# In[13]:
+# In[ ]:
 
 print('Priority distribution before and after discard by manual:')
 disc_man_prio_size = data[idx_benign & (idx_disc_man == False)].groupby('prio').size()
-pd.concat(
+df_prio_before_after_manual = pd.concat(
     [
         benign_prio_size.rename('Count, all benign'), 
         (benign_prio_size/benign_prio_size.sum()*100).rename('Percentage, all benign'),
@@ -312,18 +339,22 @@ pd.concat(
     axis=1,
 )
 
+logger.debug(df_prio_before_after_manual.to_latex())
+logger.debug(df_prio_before_after_manual.to_string())
+df_prio_before_after_manual
 
-# In[14]:
 
-print(
+# In[ ]:
+
+logger.info(
     "Unique rule IDs in orignal benign: %d" % 
     data[idx_benign].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs in alerts discarded by manual: %d" % 
     data[idx_benign & idx_disc_man].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs after discarding: %d" % 
     data[idx_benign & (idx_disc_man == False)].groupby('rid').size().size
 )
@@ -331,11 +362,11 @@ print(
 
 # ### Manual and commercial, effects of discarding both 
 
-# In[15]:
+# In[ ]:
 
 print('Priority distribution before and after discard:')
 disc_prio_size = data[idx_benign & (idx_disc_com == False) & (idx_disc_man == False)].groupby('prio').size()
-pd.concat(
+df_prio_before_after = pd.concat(
     [
         benign_prio_size.rename('Count, all benign'), 
         (benign_prio_size/benign_prio_size.sum()*100).rename('Percentage, all benign'),
@@ -344,26 +375,30 @@ pd.concat(
     ],
     axis=1,
 )
+logger.debug(df_prio_before_after.to_latex())
+logger.debug(df_prio_before_after.to_string())
+df_prio_before_after
 
 
-# In[16]:
+# In[ ]:
 
-print(
+logger.info(
     "Unique rule IDs in orignal benign: %d" % 
     data[idx_benign].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs in alerts discarded: %d" % 
     data[idx_benign & (idx_disc_man | idx_disc_com)].groupby('rid').size().size
 )
-print(
+logger.info(
     "Unique rule IDs after discarding: %d" % 
     data[idx_benign & ((idx_disc_man | idx_disc_com)==False)].groupby('rid').size().size
 )
 
 
-# In[17]:
+# In[ ]:
 
+logger.info('Analysing amount of discard by rule ID')
 df_discard = pd.concat(
     [
         data[idx_benign].groupby('rid').size().rename('before'),
@@ -375,22 +410,28 @@ df_discard = pd.concat(
 ).fillna(0).astype(int)
 
 
-# In[18]:
+# In[ ]:
 
 df_discard['Commercial'] = (df_discard['before']-df_discard['com'])/df_discard['before']*100
 df_discard['Manual'] = (df_discard['before']-df_discard['man'])/df_discard['before']*100
 df_discard['Both'] = (df_discard['before']-df_discard['both'])/df_discard['before']*100
 
+logger.debug(df_discard.to_latex())
+logger.debug(df_discard.to_string())
+df_prio_before_after
 
-# In[19]:
+
+# In[ ]:
 
 ax = df_discard[['Commercial', 'Manual', 'Both']].plot(kind='bar', figsize=(20,10))
 ax.set_title('Percentage of all benign discarded under various strategies, by Rule ID')
 ax.set_xlabel('Rule ID')
 ax.set_ylabel('%')
+plt.tight_layout()
+plt.savefig(out_prefix+'discard_ruleid.pdf', bbox_inches='tight')
 
 
-# In[20]:
+# In[ ]:
 
 # Discard
 data = data[((idx_disc_man | idx_disc_com)==False) | (idx_benign == False)]
@@ -398,16 +439,20 @@ data = data[((idx_disc_man | idx_disc_com)==False) | (idx_benign == False)]
 
 # ## Merge in time
 
-# In[21]:
+# In[ ]:
 
 # data time overview
+logger.info('Time overview, before processing')
 df_ts = data[['incident', 'ts']].groupby('incident').agg(['min', 'max'])['ts']
 df_ts.columns = ['start', 'stop', ]
 df_ts['dur'] = df_ts['stop']-df_ts['start']
+
+logger.debug(df_ts.to_latex())
+logger.debug(df_ts.to_string())
 df_ts
 
 
-# In[22]:
+# In[ ]:
 
 fig = None
 ax = None
@@ -433,12 +478,18 @@ def time_span_plot(dataframe):
     fig.set_size_inches(14, 2)
 
 time_span_plot(df_ts[(df_ts.index == 'benign')])
+plt.tight_layout()
+plt.savefig(out_prefix+'timespan_benign.pdf', bbox_inches='tight')
+
 time_span_plot(df_ts[(df_ts.index != 'benign')])
+plt.tight_layout()
+plt.savefig(out_prefix+'timespan_malicious.pdf', bbox_inches='tight')
 
 
-# In[23]:
+# In[ ]:
 
 # calculate random shift to end up within boundaries of benign
+logger.info('Calculating random shifts')
 new_start_min = df_ts.loc['benign']['start']
 new_start_max = df_ts.loc['benign']['stop']-df_ts['dur']
 window = new_start_max - new_start_min
@@ -448,10 +499,15 @@ assert (np.array(
 
 np.random.seed(rndseed())
 df_ts['shift'] = new_start_min - df_ts['start']     + map(lambda delta : np.random.rand()*delta, window)
+
+logger.debug(df_ts.to_latex())
+logger.debug(df_ts.to_string())
 df_ts
 
 
-# In[24]:
+# In[ ]:
+
+logger.info('Applying time shift')
 
 # apply shift
 shifted_data = pd.merge(data, df_ts.reset_index(), on='incident')
@@ -465,19 +521,26 @@ data = data[data_tmp.columns] # only original columns
 df_ts = data[['incident', 'ts']].groupby('incident').agg(['min', 'max'])['ts']
 df_ts.columns = ['start', 'stop', ]
 df_ts['dur'] = df_ts['stop']-df_ts['start']
+
+logger.debug(df_ts.to_latex())
+logger.debug(df_ts.to_string())
 df_ts
 
 
-# In[25]:
+# In[ ]:
 
 time_span_plot(df_ts)
 ax.plot(new_start_min, 0, 'og')
 ax.plot(new_start_max[:-1], range(1, len(new_start_max)), 'or')
+plt.tight_layout()
+plt.savefig(out_prefix+'timespan_merged.pdf', bbox_inches='tight')
 
 
 # ## Merge in IP space
 
-# In[26]:
+# In[ ]:
+
+logger.info('Merging in IP address space')
 
 # rewrite victim IPs to match benign
 malicious_ips = data[data['victim_ip'] != 'benign']    [['incident', 'victim_ip']].drop_duplicates()
@@ -488,7 +551,7 @@ def is_private_ip(string):
     try:
         return ipaddress.IPv4Address(string).is_private
     except ipaddress.AddressValueError:
-        print("ignoring IPv6 addres: {}".format(string))
+        logger.info("ignoring IPv6 addres: {}".format(string))
         return False
     
 benign_ips = benign_ips[np.array(map(is_private_ip, benign_ips))] # only private
@@ -497,10 +560,13 @@ df_replace = DataFrame(
     zip(malicious_ips['incident'], malicious_ips['victim_ip'], benign_ips),
     columns=['incident', 'from_ip', 'to_ip']
 )
+
+logger.debug(df_replace.to_latex())
+logger.debug(df_replace.to_string())
 df_replace
 
 
-# In[27]:
+# In[ ]:
 
 # perform IP replacement
 src_update = pd.merge(data.reset_index(), df_replace, left_on=['incident', 'srcip'], right_on=['incident', 'from_ip'])
@@ -521,16 +587,39 @@ assert pd.merge(data, df_replace, left_on=['incident', 'srcip'], right_on=['inci
 assert pd.merge(data, df_replace, left_on=['incident', 'dstip'], right_on=['incident', 'from_ip']).shape[0] == 0
 
 
-# In[28]:
+# In[ ]:
 
 # reconstruct alerts
 data['alert'] = data[['ts', 'rid', 'msg', 'prio', 'proto', 'srcip', 'srcport', 'dstip', 'dstport']].apply(build_line, axis=1)
 
 
+# # Stratify
+
+# In[ ]:
+
+logger.info('Stratifying data such that benign make up 50 %')
+
+malicious = data[(data['incident']!='benign')]
+benign = data[(data['incident']=='benign')]
+benign = benign.sample(n=len(malicious), random_state=rndseed())
+data = pd.concat([benign, malicious])
+
+# Shuffle
+np.random.seed(rndseed())
+data.reindex(np.random.permutation(data.index))
+
+logger.info('Overview of stratified data')
+df_overview = get_data_overview(data)
+logger.debug(df_overview.to_latex())
+logger.debug(df_overview.to_string())
+df_overview
+
+
 # # Split alerts
 
-# In[29]:
+# In[ ]:
 
+logger.info('Splitting data')
 cut_sizes = np.array([60, 20, 20])
 limits = cut_sizes.cumsum()/cut_sizes.sum()
 np.random.seed(rndseed())
@@ -542,12 +631,55 @@ assert (
 ).all()
 
 
+# In[ ]:
+
+logger.info('Overview of cut: Training')
+df_overview_train = get_data_overview(data[data['cut']==0])
+logger.debug(df_overview_train.to_latex())
+logger.debug(df_overview_train.to_string())
+df_overview_train
+
+
+# In[ ]:
+
+logger.info('Overview of cut: Validation')
+df_overview_val = get_data_overview(data[data['cut']==1])
+logger.debug(df_overview_val.to_latex())
+logger.debug(df_overview_val.to_string())
+df_overview_val
+
+
+# In[ ]:
+
+logger.info('Overview of cut: Test')
+df_overview_test = get_data_overview(data[data['cut']==2])
+logger.debug(df_overview_test.to_latex())
+logger.debug(df_overview_test.to_string())
+df_overview_test
+
+
 # # Save alerts
 
-# In[36]:
+# In[ ]:
 
 data.to_csv(
     'data/own-recordings/alerts-merged-cleaned.log.1465471791',
+    columns=['incident', 'alert', 'cut'],
+    index=False,
+)
+
+
+# In[ ]:
+
+#save test dataset of limited size
+data_test = DataFrame()
+for (i, c) in [(i, c) for i in data['incident'].unique() for c in data['cut'].unique()]:
+    data_test = pd.concat([
+        data_test,
+        data[(data['incident'] == i) & (data['cut'] == c)].head(100)
+    ])
+data_test.to_csv(
+    'data/own-recordings/alerts-merged-cleaned.log.1465471791.test',
     columns=['incident', 'alert', 'cut'],
     index=False,
 )

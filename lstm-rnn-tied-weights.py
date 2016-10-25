@@ -428,17 +428,8 @@ def shuffle(pairs):
     np.random.seed(rndseed())
     return pairs.reindex(np.random.permutation(pairs.index))
 
-def downsample_benign(data):
-    """
-    Downsample benign to make up 50 percent of all
-    """
-    malicious = data[(data['incident']!=-1)]
-    benign = data[(data['incident']==-1)]
-    benign = benign.sample(n=len(malicious), random_state=rndseed())
-    return pd.concat([benign, malicious])
-
 def take_and_modify_cut(data, cut):
-    data = downsample_benign(data[(data['cut']==cut)])
+    data = data[(data['cut']==cut)]
     pairs = get_pairs(data)
     pairs = shuffle(pairs)
     pairs = add_cor_col(pairs)
@@ -452,7 +443,7 @@ with Timer('Build pairs'):
 
 # In[ ]:
 
-def iterate_minibatches(pairs, batch_size, max_pairs=0):
+def iterate_minibatches(pairs, batch_size, max_pairs=0, include_incidents=False):
     ii = 0 # minibatch counter
     if max_pairs != 0:
         logger.debug('Limiting to {}'.format(max_pairs))
@@ -471,12 +462,17 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0):
             masks1 = np.array(batch['mask_x'].values.tolist())
             masks2 = np.array(batch['mask_y'].values.tolist())
             targets = np.array(batch['cor'].values.tolist())
-        yield inputs1, inputs2, masks1, masks2, targets
+            if include_incidents:
+                incidents1 = np.array(batch['incident_x'].values.tolist())
+                incidents2 = np.array(batch['incident_y'].values.tolist())
+                yield inputs1, inputs2, masks1, masks2, targets, incidents1, incidents2
+            else:
+                 yield inputs1, inputs2, masks1, masks2, targets
 
+
+# ## Plot Empirical Distribution Functions for model output, by ground truth for correlation
 
 # In[ ]:
-
-# Plot Empirical Distribution Functions for model output, by ground truth for correlation
 
 pairs_train_edf_cor = pairs_train[pairs_train['cor']==True].head(1000)
 pairs_train_edf_uncor = pairs_train[pairs_train['cor']==False].head(1000)
@@ -529,6 +525,7 @@ def plot_hists(hists):
                 out_prefix + 'edf_%s_%.2d.pdf' % (sett, epoch),
                 bbox_inches='tight',
             )
+            plt.show()
             plt.close()
 
 
@@ -559,9 +556,63 @@ def dump_model(net, filename):
     logger.info('Model saved')
 
 
+# ## Performance evaluation
+
+# In[ ]:
+
+def perf_eval():
+    logger.debug('Starting performance evaluation on training data')
+    train_err = 0
+    train_acc = 0
+    train_mbatches = 0
+    for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
+        err, acc = val_fn(*mbatch)
+        train_err += err
+        train_acc += acc
+        train_mbatches += 1
+    train_err = train_err/train_mbatches
+    train_acc = train_acc/train_mbatches
+    logger.debug(
+        'Completed performance evaluation on training data, err={}, acc={}'.format(
+            train_err, train_acc,
+        )
+    )
+
+    logger.debug('Starting performance evaluation on validation data')
+    val_err = 0
+    val_acc = 0
+    val_mbatches = 0
+    for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE'], env['MAX_PAIRS']):
+        err, acc = val_fn(*mbatch)
+        val_err += err
+        val_acc += acc
+        val_mbatches += 1
+    val_err = val_err/val_mbatches
+    val_acc = val_acc/val_mbatches
+    logger.debug(
+        'Completed performance evaluation on validation data, err={}, acc={}'.format(
+            val_err, val_acc,
+        )
+    )
+    return {
+        'training':{
+            'error': train_err,
+            'accuracy': train_acc,
+        },
+        'validation':{
+            'error': val_err,
+            'accuracy': val_acc,
+        }
+    }
+
+
 # ## Train
 
 # In[ ]:
+
+logger.info('Pre-training evaluation (on random weights)')
+perfs = dict()
+perfs[0] = perf_eval()
 
 if not env['MODEL']:
     logger.info("Starting training...")
@@ -577,31 +628,15 @@ if not env['MODEL']:
             n_pairs_mbatch = mbatch[0].shape[0]
             speed = n_pairs_mbatch/(time.time()-start_mbatch)
             logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
-        
-        train_err = 0
-        train_acc = 0
-        train_mbatches = 0
-        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
-            err, acc = val_fn(*mbatch)
-            train_err += err
-            train_acc += acc
-            train_mbatches += 1
-            
-        val_err = 0
-        val_acc = 0
-        val_mbatches = 0
-        for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE'], env['MAX_PAIRS']):
-            with Timer('Validation epoch {}'.format(epoch)):
-                err, acc = val_fn(*mbatch)
-            val_err += err
-            val_acc += acc
-            val_mbatches += 1
 
-        logger.info("  training loss:\t\t{:.20f}".format(train_err / train_mbatches))
-        logger.info("  training accuracy:\t\t{:.2f} %".format(train_acc / train_mbatches * 100))
-        logger.info("  validation loss:\t\t{:.20f}".format(val_err / val_mbatches))
-        logger.info("  validation accuracy:\t\t{:.2f} %".format(val_acc / val_mbatches * 100))
-        
+        with Timer('Validation epoch {}'.format(epoch)):
+            perfs[epoch+1] = perf_eval()
+        logger.debug("Performance evaluation after epoch {}: {}".format(epoch, json.dumps(perfs[epoch+1])))
+        logger.info("  training error:\t\t{:.20f}".format(perfs[epoch+1]['training']['error']))
+        logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[epoch+1]['training']['accuracy'] * 100))
+        logger.info("  validation error:\t\t{:.20f}".format(perfs[epoch+1]['validation']['error']))
+        logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[epoch+1]['validation']['accuracy'] * 100))
+
         hists[epoch+1] = get_hists()
 
         dump_model(cos_net, out_prefix + 'model' + str(epoch).zfill(len(str(env['EPOCHS'])))+ '.json')
@@ -621,27 +656,6 @@ logger.info('Plotting histograms..')
 plot_hists(hists)
 
 
-# ## Test
-
-# In[ ]:
-
-"""
-test_err = 0
-test_acc = 0
-test_batches = 0
-for batch in iterate_minibatches(get_test_batch(), env['BATCH_SIZE']):
-    err, acc = val_fn(*batch)
-    test_err += err
-    test_acc += acc
-    test_batches += 1
-
-logger.info("Final results:")
-logger.info("  test loss:\t\t\t{:.6f}".format(test_err / test_batches))
-logger.info("  test accuracy:\t\t{:.2f} %".format(
-    test_acc / test_batches * 100))
-"""
-
-
 # ## Dump model
 
 # In[ ]:
@@ -649,17 +663,18 @@ logger.info("  test accuracy:\t\t{:.2f} %".format(
 dump_model(cos_net, out_prefix + 'model.json')
 
 
-# ## Plot
+# ## Analyse errors in correlation detection
 
 # In[ ]:
 
+# count errors
 error_dict = dict()
 
 land = np.logical_and
 lnot = np.logical_not
-    
-for batch in iterate_minibatches(get_val_batch(), len(list(get_val_batch())), keep_incidents=True):
-    alerts1, alerts2, masks1, masks2, corelations, iz, js = batch
+
+for mbatch in iterate_minibatches(pairs_val, env['BATCH_SIZE'], env['MAX_PAIRS'], include_incidents=True):
+    alerts1, alerts2, masks1, masks2, corelations, incidents1, incidents2 = mbatch
     pred_floats = prediction_fn(alerts1, alerts2, masks1, masks2)
 
     logger.debug("Calculating error")
@@ -674,160 +689,123 @@ for batch in iterate_minibatches(get_val_batch(), len(list(get_val_batch())), ke
     for tp, tn, fp, fn, i, j in zip(
         true_positive, true_negative,
         false_positive, false_negative,
-        iz, js
+        incidents1, incidents2
     ):
         error_dict[i] = error_dict.get(i, np.zeros(4)) + np.array([tp, tn, fp, fn])
         error_dict[j] = error_dict.get(j, np.zeros(4)) + np.array([tp, tn, fp, fn])
-        
 (labels, errors) = zip(*sorted(list(error_dict.items())))
-errors = np.array(errors)
-errors_norm = errors / errors.sum(axis=1)[:, None]
+# Proper label for benign
+assert labels[0] == -1, "Expecting first label to be benign, encoded by -1"
+labels = tuple(['benign']) + labels[1:]
 
+cols = ['TP', 'TN', 'FP', 'FN']
+errors = pd.DataFrame(np.array(errors), columns=cols, index=labels, dtype=int)
+logger.debug('Errors table for latex: ' + errors[cols].to_latex())
+logger.info('Errors table:\n'+ errors[cols].to_string())
 
 
 # In[ ]:
 
-TP, TN, FP, FN = range(4)
+# Normalised errors
+cols_norm = [c + ' (Norm.)' for c in cols]
+errors[cols_norm] = (errors[cols].T / errors[cols].sum(axis=1)).T
+logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
+logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
 
-error_count_latex = str()
-error_count_latex += "\\hline\n" + " & ".join(['Incident', 'TP', 'TN', 'FP', 'FN']) + '\\\\\\hline \n \\hline \n'
-for i, line in enumerate(errors):
-    fmt = "{}" + " & ${:>8.0f} $"*4 + '\\\\\\hline \n'
-    error_count_latex += fmt.format(i+1, *line)
-logger.info('Error counts: \n' + error_count_latex)
+
+# In[ ]:
 
 # error rates
-tpr = errors[:,TP] / (errors[:,TP] + errors[:,FN])
-tnr = errors[:,TN] / (errors[:,TN] + errors[:,FP])
-fpr = errors[:,FP] / (errors[:,TN] + errors[:,FP])
-fnr = errors[:,FN] / (errors[:,TP] + errors[:,FN])
-error_rates = np.vstack((tpr, tnr, fpr, fnr)).T
+cols_rate = ['TPR', 'TNR', 'FPR', 'FNR']
+errors['TPR'] = errors['TP'].astype(float) / (errors['TP'] + errors['FN'])
+errors['TNR'] = errors['TN'].astype(float) / (errors['TN'] + errors['FP'])
+errors['FPR'] = errors['FP'].astype(float) / (errors['TN'] + errors['FP'])
+errors['FNR'] = errors['FN'].astype(float) / (errors['TP'] + errors['FN'])
 
-error_rates = np.vstack((error_rates, error_rates.mean(axis=0)[None,:])) # Average rates
-
-error_rates_latex = str()
-error_rates_latex += "\\hline\n" + " & ".join(['Incident', 'TPR', 'TNR', 'FPR', 'FNR']) + '\\\\\\hline \n \\hline \n'
-for i, line in enumerate(error_rates):
-    if i == 7:
-        i = 'Avg.'
-    else:
-        i = i + 1
-    fmt = ("{}" + " & ${:>8.2f} \%$"*4 + '\\\\\\hline \n')
-    error_rates_latex += fmt.format(i, *line*100)
-logger.info('Error rates: \n' + error_rates_latex)
+logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
+logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
 
 
 # In[ ]:
 
-
-index = np.arange(len(labels))
-
-fig, ax = plt.subplots()
-
+# Constants for plotting
+index_x = np.arange(len(labels))
 bar_width = 0.2
-
-
-
-types = ['True Positive', 'True Negative', 'False Positive', 'False Negative']
 colors = ['g', 'b', 'r', 'y']
 
-for i, (typ, color) in enumerate(zip(types, colors)):
+
+# In[ ]:
+
+fig, ax = plt.subplots()
+for x, (metric, color) in enumerate(zip(cols_norm, colors)):
     rect = plt.bar(
-        index + bar_width*i,
-        errors_norm[:,i],
+        index_x + bar_width * x,
+        errors[metric],
         bar_width,
         alpha=0.8,
         color=color,
         error_kw={'ecolor': '0.3'},
-        label=typ,
+        label=metric,
     )
-
+plt.title('Detection outcomes pr. incident (Normalised)')
 plt.xlabel('Incident')
 plt.ylabel('Rate')
-plt.xticks(index + bar_width, labels)
-plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-           ncol=2, mode="expand", borderaxespad=0.)
-
+plt.ylim(0, 1)
+plt.xticks(index_x + bar_width, labels)
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
-
 plt.savefig(out_prefix+'detection_norm.pdf', bbox_inches='tight')
 
 
 # In[ ]:
 
-for i, (typ, color) in enumerate(zip(types, colors)):
+fig, ax = plt.subplots()
+for x, (metric, color) in enumerate(zip(cols, colors)):
     rect = plt.bar(
-        index + bar_width*i,
-        errors[:,i],
+        index_x + bar_width * x,
+        errors[metric],
         bar_width,
         alpha=0.8,
         color=color,
         error_kw={'ecolor': '0.3'},
-        label=typ,
+        label=metric,
     )
-
+plt.title('Detection outcomes pr. incident')
 plt.xlabel('Incident')
 plt.ylabel('Count (Pairs)')
-plt.xticks(index + bar_width, labels)
-plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-           ncol=2, mode="expand", borderaxespad=0.)
-
+plt.xticks(index_x + bar_width, labels)
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
-
 plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
+
+
+# In[ ]:
+
+logger.info('Complete error table:\n'+errors.to_string())
+logger.debug('Complete error table, latex:\n'+errors.to_string())
+errors.to_csv(out_prefix + 'errors.csv')
 
 
 # # Clustering
 
 # In[ ]:
 
-# data, encoded and structured for clustering
-
-def _get_alerts(alerts):
+def _get_alert_batch(data, cut):
     """
     Encode and structures single alerts similarly to pairs
 
     Similar to _get_batch, but ommitting second alerts and correlation.
+    Currently, wont do batching.
     """
-    alerts, masks, incidents = encode(alerts)
-    if len(alerts) > env['CLUSTER_SAMPLES']:
-        alerts = alerts[:env['CLUSTER_SAMPLES'],:]
-        masks = masks[:env['CLUSTER_SAMPLES'],:]
-        incidents = incidents[:env['CLUSTER_SAMPLES']]
+    data = shuffle(data[data['cut'] == cut]).head(env['CLUSTER_SAMPLES'])
+    alerts = np.array(data['encoded_alert'].values.tolist())
+    masks = np.array(data['mask'].values.tolist())
+    incidents = np.array(data['incident'].values.tolist())
     return alerts, masks, incidents
 
-if env.get('CUT_NONE', False):
-    get_train_alerts = get_val_alerts = get_test_alerts = lambda:_get_alerts(alerts)
-
-elif env.get('CUT_INC', False):
-    get_train_alerts = lambda:_get_alerts(alerts_train)
-    get_val_alerts = lambda:_get_alerts(alerts_val)
-    get_test_alerts = lambda:_get_alerts(alerts_test)
-
-elif env.get('CUT_ALERT', False):
-    get_train_alerts = lambda:_get_alerts(alerts_train)
-    get_val_alerts = lambda:_get_alerts(alerts_val)
-    get_test_alerts = lambda:_get_alerts(alerts_test)
-
-elif env.get('CUT_PAIR', False):
-    def _get_alerts(batch_it):
-        """Get batch and drop unused vectors - for join and shuffle efffects"""
-        alerts, _, masks, _, _, incidents, _ = zip(*batch_it())
-        alerts = np.array(alerts)
-        masks = np.array(masks)
-        incidents = np.array(incidents)
-        if len(alerts) > env['CLUSTER_SAMPLES']:
-            alerts = alerts[:env['CLUSTER_SAMPLES'],:]
-            masks = masks[:env['CLUSTER_SAMPLES'],:]
-            incidents = incidents[:env['CLUSTER_SAMPLES']]
-        return alerts, masks, incidents
-
-    get_train_alerts = lambda:_get_alerts(get_train_batch)
-    get_val_alerts = lambda:_get_alerts(get_val_batch)
-    get_test_alerts = lambda:_get_alerts(get_test_batch)
-
-else:
-    raise NotImplementedError("No cut selected")
+clust_alerts_train = _get_alert_batch(data, 0)
+clust_alerts_val = _get_alert_batch(data, 1)
+clust_alerts_test = _get_alert_batch(data, 2)
 
 
 # ## Cluster train data
@@ -839,7 +817,7 @@ from sklearn import metrics
 
 logger.info("Clustering of alerts")
 
-alerts_matrix, masks_matrix, incidents_vector = get_train_alerts()
+alerts_matrix, masks_matrix, incidents_vector = clust_alerts_train
 X = alert_to_vector(alerts_matrix, masks_matrix)
 y = incidents_vector
 logger.info("Breakdown of labels:\n"+ break_down_data(y))
@@ -1016,7 +994,7 @@ def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
 
 logger.info("Applying clusters to validation data")
 
-alerts_matrix, masks_matrix, incidents_vector = get_val_alerts()
+alerts_matrix, masks_matrix, incidents_vector = clust_alerts_val
 X = alert_to_vector(alerts_matrix, masks_matrix)
 y = incidents_vector
 
@@ -1080,7 +1058,7 @@ j = min_sampless.tolist().index(min_samples)
 
 logger.info("Applying clusters to test data")
 
-alerts_matrix, masks_matrix, incidents_vector = get_test_alerts()
+alerts_matrix, masks_matrix, incidents_vector = clust_alerts_test
 X = alert_to_vector(alerts_matrix, masks_matrix)
 y = incidents_vector
 
@@ -1090,12 +1068,27 @@ y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
 
 # In[ ]:
 
+labels
+
+
+# In[ ]:
+
+pd.DataFrame(metrics.confusion_matrix(y, y_pred))
+
+
+# In[ ]:
+
+# 
+
+
+# In[ ]:
+
 logger.info(
     "Incident(i) to cluster(j) \"confusion matrix\":\n"+
     str(metrics.confusion_matrix(y, y_pred))
 )
 
-labels = ['noise'] + range(n_clusters[i][j])
+#labels = ['noise'] + range(n_clusters[i][j])
 desired_rows = range(1,8)
 
 res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
@@ -1107,7 +1100,6 @@ for l, row in zip(labels, metrics.confusion_matrix(y, y_pred)):
 logger.info(res)
 
 
-
 # In[ ]:
 
 logger.info(
@@ -1115,7 +1107,7 @@ logger.info(
     str(metrics.confusion_matrix(y, y_pred_inc))
 )
 
-labels = ['noise'] + range(1,len(set(y))+1)
+#labels = ['noise'] + range(1,len(set(y))+1)
 desired_rows = range(1,len(set(y))+1)
 
 res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
