@@ -202,10 +202,10 @@ class Timer(object):
 # Data for unit testing
 X_unit = ['abcdef', 'abcdef', 'qwerty']
 X_unit = [[ord(c) for c in w] for w in X_unit]
-X_unit = np.array(X_unit, dtype='int8')
+X_unit = np.array(X_unit, dtype='int32')
 logger.debug(X_unit)
 n_alerts_unit, l_alerts_unit = X_unit.shape
-mask_unit = np.ones(X_unit.shape, dtype='int8')
+mask_unit = np.ones(X_unit.shape, dtype='int32')
 logger.debug(mask_unit)
 
 
@@ -220,20 +220,56 @@ n_alphabet = 2**7 # All ASCII chars
 # In[ ]:
 
 # Symbolic variables
-input_var, input_var2 = T.imatrices('inputs', 'inputs2')
-mask_var, mask_var2 = T.matrices('masks', 'masks2')
-target_var = T.dvector('targets')
+input_var = T.matrix('inputs', dtype='int32')
+input_var2 = T.matrix('inputs2', dtype='int32')
+mask_var = T.matrix('masks', dtype='int32')
+mask_var2 = T.matrix('masks2', dtype='int32')
+target_var = T.vector('targets', dtype=theano.config.floatX)
+
+
+# ### First line
+
+# In[ ]:
+
+l_in = InputLayer(shape=(n_alerts, l_alerts), input_var=input_var, name='INPUT-LAYER')
+
+l_in_output_var = get_output(l_in, inputs={l_in: input_var})
+assert l_in_output_var.dtype == 'int32'
+
+pred_unit = l_in_output_var.eval({input_var: X_unit})
+assert (pred_unit == X_unit).all(), "Unexpected output"
 
 
 # In[ ]:
 
-# First line
-l_in = InputLayer(shape=(n_alerts, l_alerts), input_var=input_var, name='INPUT-LAYER')
-l_emb = EmbeddingLayer(l_in, n_alphabet, n_alphabet,
-                         W=np.eye(n_alphabet),
-                         name='EMBEDDING-LAYER')
+l_emb = EmbeddingLayer(
+    l_in, n_alphabet, n_alphabet,
+    W=np.eye(n_alphabet, dtype=theano.config.floatX),
+    name='EMBEDDING-LAYER',
+)
 l_emb.params[l_emb.W].remove('trainable') # Fix weight
+
+l_emb_output_var = get_output(l_emb, inputs={l_in: input_var})
+assert l_emb_output_var.dtype == theano.config.floatX
+
+pred_unit = l_emb_output_var.eval({input_var: X_unit})
+assert (np.argmax(pred_unit, axis=2) == X_unit).all()
+assert np.all(pred_unit.shape == (n_alerts_unit, l_alerts_unit, n_alphabet ))
+
+
+# In[ ]:
+
 l_mask = InputLayer(shape=(n_alerts, l_alerts), input_var=mask_var, name='MASK-INPUT-LAYER')
+
+l_mask_output_var = get_output(l_mask, inputs={l_mask: mask_var})
+assert l_mask_output_var.dtype == 'int32'
+
+pred_unit = l_mask_output_var.eval({mask_var: mask_unit})
+assert (pred_unit == mask_unit).all(), "Unexpected output"
+
+
+# In[ ]:
+
 l_lstm = l_emb
 for i, num_units in enumerate(env['NN_UNITS']):
     logger.info('Adding {} units for {} layer'.format(num_units, i))
@@ -242,24 +278,24 @@ l_slice = SliceLayer(l_lstm, indices=-1, axis=1, name="SLICE-LAYER") # Only last
 net = l_slice
 
 
+# # THIS IS WHERE I ENDED THE DAY
+
 # In[ ]:
 
-# Test first line
-
-# Test InputLayer
-pred_unit = get_output(l_in, inputs={l_in: input_var}).eval(
-    {input_var: X_unit})
-assert (pred_unit == X_unit).all(), "Unexpected output"
-# Test EmbeddingLayer
-pred_unit = get_output(l_emb, inputs={l_in: input_var}).eval(
-    {input_var: X_unit})
-assert (np.argmax(pred_unit, axis=2) == X_unit).all()
-assert np.all(pred_unit.shape == (n_alerts_unit, l_alerts_unit, n_alphabet ))
 # Test LSTMLayer
 pred_unit = get_output(
     l_lstm,
     inputs={l_in: input_var, l_mask: mask_var}
 ).eval({input_var: X_unit, mask_var: mask_unit})
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
 assert pred_unit.shape == (n_alerts_unit, l_alerts_unit, num_units), "Unexpected dimensions"
 pred_unit = get_output(
     l_lstm,
@@ -295,6 +331,11 @@ pred_unit_lstm = get_output(
 assert np.all(pred_unit_lstm[:, -1, :] == pred_unit), "Unexpected result of slicing"
 
 logger.debug('OK')
+
+
+# In[ ]:
+
+
 
 
 # In[ ]:
