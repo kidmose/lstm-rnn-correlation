@@ -679,7 +679,7 @@ for (i, c) in [(i, c) for i in data['incident'].unique() for c in data['cut'].un
         data[(data['incident'] == i) & (data['cut'] == c)].head(100)
     ])
 data_test.to_csv(
-    'data/own-recordings/alerts-merged-cleaned.log.1465471791.test',
+    'data/own-recordings/alerts-merged-cleaned-strat50.log.1465471791.test',
     columns=['incident', 'alert', 'cut'],
     index=False,
 )

@@ -520,7 +520,12 @@ def plot_hists(hists):
                 'EDF on %s data, trained for %d epochs' % (sett, epoch),
             )
             plt.legend()
-            plt.gca().set_ylim(0, 350)
+            max_val = 0
+            for v1 in hists.values():
+                for v2 in v1.values():
+                    for v3 in v2.values():
+                        max_val = max(v3.max(), max_val)
+            plt.gca().set_ylim(0, max_val)
             plt.savefig(
                 out_prefix + 'edf_%s_%.2d.pdf' % (sett, epoch),
                 bbox_inches='tight',
@@ -610,9 +615,14 @@ def perf_eval():
 
 # In[ ]:
 
-logger.info('Pre-training evaluation (on random weights)')
 perfs = dict()
+logger.info('Pre-training evaluation (on random model weights)')
 perfs[0] = perf_eval()
+logger.debug("Performance evaluation before training: {}".format(json.dumps(perfs[0])))
+logger.info("  training error:\t\t{:.20f}".format(perfs[0]['training']['error']))
+logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[0]['training']['accuracy'] * 100))
+logger.info("  validation error:\t\t{:.20f}".format(perfs[0]['validation']['error']))
+logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[0]['validation']['accuracy'] * 100))
 
 if not env['MODEL']:
     logger.info("Starting training...")
@@ -654,6 +664,27 @@ if not env['MODEL']:
 logger.debug('Histograms:' + str(hists))
 logger.info('Plotting histograms..')
 plot_hists(hists)
+
+
+# In[ ]:
+
+logger.debug('Performance evaluation: ' + json.dumps(perfs))
+
+for metric in ['accuracy', 'error']:
+    plt.figure()
+    for zet in ['training', 'validation']:
+        y = [perf[zet][metric] for epoch, perf in sorted(perfs.items())]
+        x = range(len(y))
+        plt.plot(x, y, '.-', label='{}'.format(zet))
+    plt.title('Performance ({}) over epochs'.format(metric))
+    plt.legend()
+    plt.xticks(perfs.keys())
+    plt.savefig(
+        out_prefix + 'perf_{}.pdf'.format(metric),
+        bbox_inches='tight',
+    )
+    plt.show()
+    plt.close()
 
 
 # ## Dump model
@@ -702,6 +733,7 @@ cols = ['TP', 'TN', 'FP', 'FN']
 errors = pd.DataFrame(np.array(errors), columns=cols, index=labels, dtype=int)
 logger.debug('Errors table for latex: ' + errors[cols].to_latex())
 logger.info('Errors table:\n'+ errors[cols].to_string())
+errors[cols]
 
 
 # In[ ]:
@@ -711,6 +743,7 @@ cols_norm = [c + ' (Norm.)' for c in cols]
 errors[cols_norm] = (errors[cols].T / errors[cols].sum(axis=1)).T
 logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
 logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
+errors[cols_norm]
 
 
 # In[ ]:
@@ -724,6 +757,7 @@ errors['FNR'] = errors['FN'].astype(float) / (errors['TP'] + errors['FN'])
 
 logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
 logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
+errors[cols_norm]
 
 
 # In[ ]:
@@ -1068,71 +1102,81 @@ y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
 
 # In[ ]:
 
-labels
+sorted(set.union(set(y), set(y_pred)))
 
 
 # In[ ]:
 
-pd.DataFrame(metrics.confusion_matrix(y, y_pred))
+cm_inc_clust = pd.DataFrame(
+    metrics.confusion_matrix(y, y_pred),
+    index=sorted(set.union(set(y), set(y_pred))),
+    columns=sorted(set.union(set(y), set(y_pred))),
+)
+# drop dummy row for non-existing incident IDs
+assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
+cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
+
+# drop dummy collumns for non-existing cluster IDs
+assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
+cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
+
+cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
+cm_inc_clust.rename(columns={-1: 'noise'}, inplace=True)
+
+logger.info("Incident (i) to cluster (j) \"confusion matrix\":\n" + cm_inc_clust.to_string())
+logger.debug("Incident (i) to cluster (j) \"confusion matrix\" in latex:\n" + cm_inc_clust.to_latex())
+cm_inc_clust
 
 
 # In[ ]:
 
-# 
-
-
-# In[ ]:
-
-logger.info(
-    "Incident(i) to cluster(j) \"confusion matrix\":\n"+
-    str(metrics.confusion_matrix(y, y_pred))
+cm_inc_inc = pd.DataFrame(
+    metrics.confusion_matrix(y, y_pred_inc),
+    index=sorted(set.union(set(y), set(y_pred_inc))),
+    columns=sorted(set.union(set(y), set(y_pred_inc))),
 )
 
-#labels = ['noise'] + range(n_clusters[i][j])
-desired_rows = range(1,8)
+cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
+cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
 
-res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
-for l, row in zip(labels, metrics.confusion_matrix(y, y_pred)):
-    if l not in desired_rows:
-        continue # No incident zero or noise as row
-    fmt = ('{}' + " & {} "*len(row))
-    res += fmt.format(l, *row) + '\\\\\\hline\n'
-logger.info(res)
-
-
-# In[ ]:
-
-logger.info(
-    "Incident(i) to incident(j) confusion matrix:\n"+
-    str(metrics.confusion_matrix(y, y_pred_inc))
-)
-
-#labels = ['noise'] + range(1,len(set(y))+1)
-desired_rows = range(1,len(set(y))+1)
-
-res = "\\hline\n & " + " & ".join([str(c) for c in labels]) + '\\\\\\hline\n\\hline\n'
-for l, row in zip(labels, metrics.confusion_matrix(y, y_pred_inc)):
-    if l not in desired_rows:
-        continue 
-    fmt = ('{}' + " & {} "*len(row))
-    res += fmt.format(l, *row) + '\\\\\\hline\n'
-logger.info(res)
+logger.info("Incident (i) to Incident (j) confusion matrix:\n" + cm_inc_inc.to_string())
+logger.debug("Incident (i) to Incident (j) confusion matrix in latex:\n" + cm_inc_inc.to_latex())
+cm_inc_inc
 
 
 # In[ ]:
 
 cm = metrics.confusion_matrix(y, y_pred_inc)
-logger.info("Correctly classified, disregarding noise: {:.2f}%".format(cm[1:,1:].diagonal().sum()/cm[1:,1:].sum()*100))
-logger.info("Correctly classified, including noise: {:.2f}%".format(cm[1:,1:].diagonal().sum()/cm.sum()*100))
-logger.info("Noise sample count: {}".format(sum(y_pred_inc == -1)))
+logger.info("Classification accuracy: {:.2f}%".format(
+    cm_inc_inc.as_matrix().diagonal().sum() / cm_inc_inc.as_matrix().sum() * 100
+))
 
 
 # In[ ]:
 
-logger.info(
-    "Classification report:\n"+
-    metrics.classification_report(y, y_pred_inc)
-)
+report = pd.DataFrame(
+    dict(zip(
+        ['precision', 'recall', 'f1-score', 'support'],
+        metrics.precision_recall_fscore_support(y, y_pred_inc),
+    )),
+    index=sorted(list(set(y))),
+)[['precision', 'recall', 'f1-score', 'support']]
+mean = report.mean(axis=0).drop('support')
+zum = report.sum(axis=0).drop(['precision', 'recall', 'f1-score'])
+
+report.loc['mean'] = mean
+report.loc['sum'] = zum
+report['support'] = report['support'].fillna(-1).astype(int)
+
+logger.info("Classification report:\n"+report.to_string())
+logger.debug("Classification report in latex:\n"+report.to_latex())
+report
+
+
+# In[ ]:
+
+logger.info('Testing completed, exiting')
+sys.exit(0)
 
 
 # ## Analysing results
