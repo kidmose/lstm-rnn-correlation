@@ -16,6 +16,8 @@
 # License along with lstm-rnn-correlation. If not, see
 # <http://www.gnu.org/licenses/>.
 
+# based on http://www.pyimagesearch.com/2016/07/04/how-to-install-cuda-toolkit-and-cudnn-for-deep-learning/
+
 # Update os
 sudo apt-get update && sudo apt-get upgrade -y && echo "OS up to date"
 
