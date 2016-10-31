@@ -181,18 +181,19 @@ def rndseed():
 # In[ ]:
 
 class Timer(object):
-    def __init__(self, name=''):
+    def __init__(self, name='', log=logger.debug):
         self.name = name
+        self.log = log
         
     def __enter__(self):
-        logger.debug('Timer(%s) started' % (self.name, ))
+        self.log('Timer(%s) started' % (self.name, ))
         self.start = time.time()
         return self
 
     def __exit__(self, *args):
         self.end = time.time()
         self.dur = datetime.timedelta(seconds=self.end - self.start)
-        logger.debug('Timer(%s):\t%s' % (self.name, self.dur))
+        self.log('Timer(%s):\t%s' % (self.name, self.dur))
 
 
 # ## Build network
@@ -205,7 +206,7 @@ X_unit = [[ord(c) for c in w] for w in X_unit]
 X_unit = np.array(X_unit, dtype='int32')
 logger.debug(X_unit)
 n_alerts_unit, l_alerts_unit = X_unit.shape
-mask_unit = np.ones(X_unit.shape, dtype='int32')
+mask_unit = np.ones(X_unit.shape, dtype=theano.config.floatX)
 logger.debug(mask_unit)
 
 
@@ -220,11 +221,11 @@ n_alphabet = 2**7 # All ASCII chars
 # In[ ]:
 
 # Symbolic variables
-input_var = T.matrix('inputs', dtype='int32')
-input_var2 = T.matrix('inputs2', dtype='int32')
-mask_var = T.matrix('masks', dtype='int32')
-mask_var2 = T.matrix('masks2', dtype='int32')
-target_var = T.vector('targets', dtype=theano.config.floatX)
+input_var = T.imatrix('inputs')
+input_var2 = T.imatrix('inputs2')
+mask_var = T.matrix('masks')
+mask_var2 = T.matrix('masks2')
+target_var = T.vector('targets')
 
 
 # ### First line
@@ -262,7 +263,7 @@ assert np.all(pred_unit.shape == (n_alerts_unit, l_alerts_unit, n_alphabet ))
 l_mask = InputLayer(shape=(n_alerts, l_alerts), input_var=mask_var, name='MASK-INPUT-LAYER')
 
 l_mask_output_var = get_output(l_mask, inputs={l_mask: mask_var})
-assert l_mask_output_var.dtype == 'int32'
+assert l_mask_output_var.dtype == theano.config.floatX
 
 pred_unit = l_mask_output_var.eval({mask_var: mask_unit})
 assert (pred_unit == mask_unit).all(), "Unexpected output"
@@ -274,89 +275,103 @@ l_lstm = l_emb
 for i, num_units in enumerate(env['NN_UNITS']):
     logger.info('Adding {} units for {} layer'.format(num_units, i))
     l_lstm = LSTMLayer(l_lstm, num_units=num_units, name='LSTM-LAYER[{}]'.format(i), mask_input=l_mask)
-l_slice = SliceLayer(l_lstm, indices=-1, axis=1, name="SLICE-LAYER") # Only last timestep
-net = l_slice
 
+l_lstm_output_var = get_output(l_lstm, inputs={l_in: input_var, l_mask: mask_var})
+assert l_mask_output_var.dtype == theano.config.floatX
 
-# # THIS IS WHERE I ENDED THE DAY
-
-# In[ ]:
-
-# Test LSTMLayer
-pred_unit = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: X_unit, mask_var: mask_unit})
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
+pred_unit = l_lstm_output_var.eval({input_var: X_unit, mask_var: mask_unit})
+assert pred_unit.dtype == theano.config.floatX, "Unexpected dtype"
 assert pred_unit.shape == (n_alerts_unit, l_alerts_unit, num_units), "Unexpected dimensions"
-pred_unit = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: [[1],[1]], mask_var: [[1],[1]]})
+pred_unit = l_lstm_output_var.eval({input_var: [[1],[1]], mask_var: [[1],[1]]})
 assert np.all(pred_unit[0] == pred_unit[1]), "Repeated alerts must produce the same"
-pred_unit = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: [[1,1],[1,1]], mask_var: [[1,1],[1,1]]})
+pred_unit = l_lstm_output_var.eval({input_var: [[1,1],[1,1]], mask_var: [[1,1],[1,1]]})
 assert np.all(pred_unit[0] == pred_unit[1]), "Repeated alerts must produce the same"
-pred_unit = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: [[1,1],[0,1]], mask_var: [[1,1],[1,1]]})
+pred_unit = l_lstm_output_var.eval({input_var: [[1,1],[0,1]], mask_var: [[1,1],[1,1]]})
 assert np.all(pred_unit[0] != pred_unit[1]), "Earlier must affect laters"
-pred_unit = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: [[1,0],[1,1]], mask_var: [[1,1],[1,1]]})
+pred_unit = l_lstm_output_var.eval({input_var: [[1,0],[1,1]], mask_var: [[1,1],[1,1]]})
 assert np.all(pred_unit[0,0] == pred_unit[1,0]), "Later must not affect earlier"
 assert np.all(pred_unit[0,1] != pred_unit[1,1]), "Current must make a difference"
-# Test SliceLayer
-pred_unit = get_output(
-    l_slice,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: X_unit, mask_var: mask_unit})
+
+
+# In[ ]:
+
+l_slice = SliceLayer(l_lstm, indices=-1, axis=1, name="SLICE-LAYER") # Only last timestep
+
+l_slice_output_var = get_output(l_slice, inputs={l_in: input_var, l_mask: mask_var})
+assert l_slice_output_var.dtype == theano.config.floatX
+
+pred_unit = l_slice_output_var.eval({input_var: X_unit, mask_var: mask_unit})
 assert pred_unit.shape == (n_alerts_unit, num_units), "Unexpected shape"
-pred_unit_lstm = get_output(
-    l_lstm,
-    inputs={l_in: input_var, l_mask: mask_var}
-).eval({input_var: X_unit, mask_var: mask_unit})
+pred_unit_lstm = l_lstm_output_var.eval({input_var: X_unit, mask_var: mask_unit})
 assert np.all(pred_unit_lstm[:, -1, :] == pred_unit), "Unexpected result of slicing"
 
-logger.debug('OK')
+net = l_slice
+logger.info('First line built')
 
 
-# In[ ]:
-
-
-
+# ### Second line as a copy with shared weights
 
 # In[ ]:
 
-# Second line as a copy with shared weights
 l_in2 = InputLayer(shape=l_in.shape, input_var=input_var2, name=l_in.name+'2')
 l_mask2 = InputLayer(shape=l_mask.shape, input_var=mask_var2, name=l_mask.name+'2')
 net2 = lstm_rnn_tied_weights.clone(net, l_in2, l_mask2)
 
+net_pred = get_output(net, inputs={l_in: input_var, l_mask: mask_var}).eval({input_var: X_unit, mask_var: mask_unit})
+net_pred2 = get_output(net2, inputs={l_in2: input_var, l_mask2: mask_var}).eval({input_var: X_unit, mask_var: mask_unit})
+assert (net_pred == net_pred2).all(), "Output mismatch, two lines must produce same output"
+
+logger.info('Second line built')
+
+
+# ### Merge lines
 
 # In[ ]:
 
-# Merge lines
 l_cos = CosineSimilarityLayer(net, net2, name="COSINE-SIMILARITY-LAYER")
+
+l_cos_output_var = get_output(l_cos, inputs={
+        l_in: input_var,
+        l_mask: mask_var,
+        l_in2: input_var2,
+        l_mask2: mask_var2,
+})
+assert l_emb_output_var.dtype == theano.config.floatX
+
+pred_unit = l_cos_output_var.eval(({
+            input_var: X_unit,
+            input_var2: X_unit,
+            mask_var: mask_unit,
+            mask_var2: mask_unit,
+}))
+
+
+# In[ ]:
+
 l_sig = NonlinearityLayer(l_cos, nonlinearity=sigmoid, name="SIGMOID-LAYER")
+
+l_sig_output_var = get_output(l_sig, inputs={
+        l_in: input_var,
+        l_mask: mask_var,
+        l_in2: input_var2,
+        l_mask2: mask_var2,
+})
+assert l_sig_output_var.dtype == theano.config.floatX
+
+pred_unit = l_sig_output_var.eval(({
+            input_var: X_unit,
+            input_var2: X_unit,
+            mask_var: mask_unit,
+            mask_var2: mask_unit,
+}))
+assert pred_unit is not None
+
 cos_net = l_sig
 
 
 # In[ ]:
 
-with Timer('Compiling theano'):
+with Timer('Compiling theano', logger.info):
     # Training Procedure
     prediction = get_output(cos_net)
     loss = binary_crossentropy(prediction, target_var)
@@ -383,7 +398,7 @@ with Timer('Compiling theano'):
 # In[ ]:
 
 with Timer('Load data'):
-    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned.log.1465471791')
+    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned-strat50.log.1465471791')
 
 # Test data
 test_incidents = np.array(['1', '2', 'benign']*2)
