@@ -73,5 +73,5 @@ sudo apt-get install -y \
 ssh-keygen -f ~/.ssh/id_rsa -t rsa -N '' && \
     echo '~/.ssh/id_rsa.pub:' && cat ~/.ssh/id_rsa.pub && read -p "Copy and add key, enter to continue" && \
     git clone git@bitbucket.org:kidmose/lstm-rnn-correlation.git && \
-    LC_ALL=C sudo pip install -r lstm-rnn-correlation/requirements.txt `# http://stackoverflow.com/questions/26473681/pip-install-numpy-throws-an-error-ascii-codec-cant-decode-byte-0xe2` && \
+    LC_ALL=C sudo -H pip install -r lstm-rnn-correlation/requirements.txt `# http://stackoverflow.com/questions/26473681/pip-install-numpy-throws-an-error-ascii-codec-cant-decode-byte-0xe2` && \
     echo 'Requirements installed from pip, code fetched'
