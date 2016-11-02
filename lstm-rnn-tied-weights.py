@@ -135,13 +135,15 @@ env['version'] = subprocess.check_output(["git", "describe"]).strip()
 if not isinstance(env['version'], str):
     env['version'] = str(env['version'], "UTF-8")
 
-# OMP
+# OMP/CUDA
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
+env['THEANO_FLAGS'] = os.environ.get('THEANO_FLAGS', str())
 
 # Data control
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
+env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
 
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
@@ -171,7 +173,7 @@ for k in sorted(env.keys()):
 
 # In[ ]:
 
-seed = 1470300368 # Unix time at time of writing
+seed = env['RAND_SEED']
 def rndseed():
     global seed
     seed += 1
