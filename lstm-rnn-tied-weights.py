@@ -145,7 +145,6 @@ env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
-env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
@@ -156,10 +155,16 @@ env['version'] = subprocess.check_output(["git", "describe"]).strip()
 if not isinstance(env['version'], str):
     env['version'] = str(env['version'], "UTF-8")
 
-# OMP/CUDA
+# Platform
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 env['THEANO_FLAGS'] = os.environ.get('THEANO_FLAGS', str())
+env['MAX_HOURS'] = float(os.environ.get('MAX_HOURS', '23.5'))
+start_script = datetime.datetime.now()
+end_script_before = start_script + datetime.timedelta(hours=env['MAX_HOURS'])
+logger.info('Started at {}, must end before {}'.format(start_script, end_script_before))
 
+# Clustering
+env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 # Perform tests if EPS and min_samples are set
 try:
     env['TEST_EPS'] = float(os.environ['TEST_EPS'])
@@ -772,16 +777,16 @@ for epoch, completed_epochs in enumerate(range(
         completed_epochs+env['EPOCHS']+1
     )):
     train_mbatches = 0
-    start_epoch = time.time()
+    start_epoch = datetime.datetime.now()
     with Timer('Shuffle, epoch {}'.format(epoch)):
         pairs_train = shuffle(pairs_train)
     for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
-        start_mbatch = time.time()
+        start_mbatch = datetime.datetime.now()
         with Timer('Train epoch {}'.format(epoch)):
             train_fn(*mbatch)
         train_mbatches += 1
         n_pairs_mbatch = mbatch[0].shape[0]
-        speed = n_pairs_mbatch/(time.time()-start_mbatch)
+        speed = n_pairs_mbatch/(datetime.datetime.now()-start_mbatch).total_seconds()
         logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
 
     with Timer('Validation epoch {}'.format(epoch)):
@@ -796,10 +801,14 @@ for epoch, completed_epochs in enumerate(range(
     hists[completed_epochs] = get_hists()
     dump_model(cos_net, out_prefix + 'model' + str(completed_epochs).zfill(4)+ '.json')
 
-    end_epoch = time.time()
+    end_epoch = datetime.datetime.now()
     dur_epoch = end_epoch-start_epoch
-    logger.info("Completed epoch %s of %d, time=%.3f[sec]"                 % (epoch + 1, env['EPOCHS'], dur_epoch))
-    logger.info('Timer(Epoch)\t\t%s' % datetime.timedelta(seconds=dur_epoch))
+    logger.info("Completed epoch %s of %d, time=%.3f[sec]"                 % (epoch + 1, env['EPOCHS'], dur_epoch.total_seconds()))
+    logger.info('Timer(Epoch)\t\t%s' % dur_epoch)
+    
+    if datetime.datetime.now() + dur_epoch > end_script_before:
+        logger.warning("Skipping any remaining epochs as last epoch took longer than remaining time")
+        break
 
 logger.info('Training complete')
 
