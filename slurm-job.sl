@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH -A aaubotsensor_gpu
-#SBATCH --time=00:15:00
 
 # Copyright (C) Egon Kidmose 2015-2017
 # 
