@@ -107,10 +107,14 @@ from lstm_rnn_tied_weights import load, modify, split, pool, cross_join, limit, 
 from lstm_rnn_tied_weights import iterate_minibatches, encode
 from lstm_rnn_tied_weights import mask_ips, mask_tss, mask_ports
 from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_prio
-logger = lstm_rnn_tied_weights.logger
 
+
+# In[ ]:
+
+logger = lstm_rnn_tied_weights.logger
+OUTPUT = 'output'
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
-out_dir = 'output/' + runid
+out_dir = OUTPUT + '/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 out_prefix = out_dir + '/' + runid + '-'
@@ -129,7 +133,24 @@ vfh.setFormatter(logging.Formatter(
 ))
 logger.addHandler(vfh)
 
+logger.info('Output, including logs, are going to: {}'.format(out_dir))
+
+
+# In[ ]:
+
 env = dict()
+
+# Data control
+env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
+env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
+env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
+env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
+env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
+
+# Neural network
+env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
+env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
+
 # git
 env['version'] = subprocess.check_output(["git", "describe"]).strip()
 if not isinstance(env['version'], str):
@@ -138,22 +159,6 @@ if not isinstance(env['version'], str):
 # OMP/CUDA
 env['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', str())
 env['THEANO_FLAGS'] = os.environ.get('THEANO_FLAGS', str())
-
-# Data control
-env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
-env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
-env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
-env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
-
-# Neural network
-env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
-env['NN_LEARNING_RATE'] = float(os.environ.get('NN_LEARNING_RATE', '0.1'))
-
-# Load model weights from file, don't train?
-env['MODEL'] = os.environ.get('MODEL', None)
-
-# Clustering
-env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
 
 # Perform tests if EPS and min_samples are set
 try:
@@ -165,10 +170,35 @@ try:
 except:
     env['TEST_MS'] = None
 
+# Continue existing, old job
+env['OLD_JOB'] = os.environ.get('OLD_JOB', None)
+if env['OLD_JOB']:
+    logger.critical("Continuing on OLD_JOB={}".format(env['OLD_JOB']))
+    if not os.path.exists(env['OLD_JOB']):
+        logger.critical("Old job to continue does not exist ({})".format(env['OLD_JOB']))
+        sys.exit(-1)
+    old_run_id = env['OLD_JOB'].split('/')[-1]
+    old_out_prefix = env['OLD_JOB'] + '/' + old_run_id + '-'
+    with open(old_out_prefix + 'env.json') as f:
+        env_old = json.load(f)
+    logger.info('Loaded old env')
+    statics = [
+        'MAX_PAIRS',
+        'BATCH_SIZE',
+        'NN_UNITS',
+        'NN_LEARNING_RATE',
+    ]
+    for s in statics:
+        env[s] = env_old[s]
+
 logger.info("Starting.")
 logger.info("env: " + str(env))
 for k in sorted(env.keys()):
     logger.info('env[\'{}\']: {}'.format(k,env[k]))
+
+logger.debug('Saving env')
+with open(out_prefix + 'env.json', 'w') as f:
+    json.dump(env, f)
 
 
 # In[ ]:
@@ -448,6 +478,9 @@ with Timer('Encode alerts'):
     # incident as int, -1 represent benign
     data['incident'] = pd.to_numeric(data['incident'], errors='coerce').fillna(-1).astype(int)
 
+assert (data['alert'].map(len) == data['mask'].map(sum)).all(), "Sum of mask is not equal length of alert"
+assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).all(),     "Last non-zero index of mask is not equal to length of alert"
+
 
 # ## Cut data, pairing
 
@@ -588,35 +621,7 @@ def plot_hists(hists):
                 out_prefix + 'edf_%s_%.2d.pdf' % (sett, epoch),
                 bbox_inches='tight',
             )
-            plt.show()
             plt.close()
-
-
-hists = dict()
-hists[0] = get_hists()
-
-
-# ## Load model
-
-# In[ ]:
-
-if env['MODEL']:
-    logger.info('Loading model from {}'.format(env['MODEL']))
-    with open(env['MODEL']) as f:
-        model = json.loads(f.read())
-
-    # Order accoording to current model (JSON might reorder)
-    params = get_all_params(cos_net)
-    values = [np.array(model['model'][p.name]) for p in params]
-
-    set_all_param_values(cos_net, values)
-
-def dump_model(net, filename):
-    model = {'model':{str(p): v.tolist() for p, v in zip(get_all_params(net), get_all_param_values(net))}}
-    logger.info('Saving model to {}'.format(filename))
-    with open(filename, 'w') as f:
-        f.write(json.dumps(model))
-    logger.info('Model saved')
 
 
 # ## Performance evaluation
@@ -668,88 +673,154 @@ def perf_eval():
         }
     }
 
+def plot_perfs(perfs):
+    for metric in ['accuracy', 'error']:
+        plt.figure()
+        for zet in ['training', 'validation']:
+            y = [perf[zet][metric] for epoch, perf in sorted(perfs.items())]
+            x = range(len(y))
+            plt.plot(x, y, '.-', label='{}'.format(zet))
+        plt.title('Performance ({}) over epochs'.format(metric))
+        plt.legend()
+        plt.xticks(perfs.keys())
+        plt.savefig(
+            out_prefix + 'perf_{}.pdf'.format(metric),
+            bbox_inches='tight',
+        )
+        plt.close()
+
+
+# ## Load model
+
+# In[ ]:
+
+def load_model(net, filename):
+    logger.info('Loading model from {}'.format(filename))
+    with open(filename) as f:
+        model = json.loads(f.read())
+
+    # Order accoording to current model (JSON might reorder)
+    params = get_all_params(cos_net)
+    values = [np.array(model['model'][p.name]) for p in params]
+
+    set_all_param_values(cos_net, values)
+    logger.info("Model loaded")
+
+def dump_model(net, filename):
+    model = {'model':{str(p): v.tolist() for p, v in zip(get_all_params(net), get_all_param_values(net))}}
+    logger.info('Dumping model to {}'.format(filename))
+    with open(filename, 'w') as f:
+        f.write(json.dumps(model))
+    logger.info('Model dumped')
+
+
+# ## Load old job for continuation or start new
+
+# In[ ]:
+
+# quick'n'dirty numpy<->json encoding/decoding
+def json_encode_hists(d):
+    return {k:{k:{k:v.tolist() for k,v in v.items()} for k,v in v.items()} for k, v in d.items()}
+def json_decode_hists(d):
+    return {int(k):{str(k):{str(k):np.array(v) for k,v in v.items()} for k,v in v.items()} for k, v in d.items()}
+def json_encode_perfs(d):
+    return d
+def json_decode_perfs(d):
+    return {int(k):{str(k):{str(k):v for k,v in v.items()} for k,v in v.items()} for k, v in d.items()}
+
+if env['OLD_JOB']:
+    logger.info("Loading data for OLD_JOB: {}".format(env['OLD_JOB']))
+    
+    logger.debug('Loading histograms')
+    with open(old_out_prefix + 'histograms.json') as f:
+        hists = json_decode_hists(json.load(f))
+
+    logger.debug('Loading perfomance metrics')
+    with open(old_out_prefix + 'performances.json') as f:
+        perfs = json_decode_perfs(json.load(f))
+    
+    assert sorted(hists.keys()) == sorted(perfs.keys())
+    completed_epochs = max(hists.keys())
+    
+    load_model(
+        cos_net,
+        (old_out_prefix + 'model{:04d}.json').format(completed_epochs),
+    )
+        
+else:
+    logger.info('Starting job from scratch (No OLD_JOB given)')
+    hists = {0: get_hists()}
+    perfs = {0: perf_eval()}
+    # Model already randomly initialised
+    completed_epochs = 0
+
 
 # ## Train
 
 # In[ ]:
 
-perfs = dict()
-logger.info('Pre-training evaluation (on random model weights)')
-perfs[0] = perf_eval()
-logger.debug("Performance evaluation before training: {}".format(json.dumps(perfs[0])))
-logger.info("  training error:\t\t{:.20f}".format(perfs[0]['training']['error']))
-logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[0]['training']['accuracy'] * 100))
-logger.info("  validation error:\t\t{:.20f}".format(perfs[0]['validation']['error']))
-logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[0]['validation']['accuracy'] * 100))
+logger.info('Pre-training evaluation (on random model weights/loaded model as per above)')
+logger.debug("Performance evaluation before training: {}".format(json.dumps(perfs[completed_epochs])))
+logger.info("  training error:\t\t{:.20f}".format(perfs[completed_epochs]['training']['error']))
+logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[completed_epochs]['training']['accuracy'] * 100))
+logger.info("  validation error:\t\t{:.20f}".format(perfs[completed_epochs]['validation']['error']))
+logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[completed_epochs]['validation']['accuracy'] * 100))
 
-if not env['MODEL']:
-    logger.info("Starting training...")
-    for epoch in range(env['EPOCHS']):
-        train_mbatches = 0
-        start_epoch = time.time()
-        with Timer('Shuffle, epoch {}'.format(epoch)):
-            pairs_train = shuffle(pairs_train)
-        for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
-            start_mbatch = time.time()
+logger.info("Training for {} epochs on top of {} old epochs".format(env['EPOCHS'], completed_epochs))
+for epoch, completed_epochs in enumerate(range(
+        completed_epochs+1, 
+        completed_epochs+env['EPOCHS']+1
+    )):
+    train_mbatches = 0
+    start_epoch = time.time()
+    with Timer('Shuffle, epoch {}'.format(epoch)):
+        pairs_train = shuffle(pairs_train)
+    for mbatch in iterate_minibatches(pairs_train, env['BATCH_SIZE'], env['MAX_PAIRS']):
+        start_mbatch = time.time()
+        with Timer('Train epoch {}'.format(epoch)):
             train_fn(*mbatch)
-            train_mbatches += 1
-            n_pairs_mbatch = mbatch[0].shape[0]
-            speed = n_pairs_mbatch/(time.time()-start_mbatch)
-            logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
+        train_mbatches += 1
+        n_pairs_mbatch = mbatch[0].shape[0]
+        speed = n_pairs_mbatch/(time.time()-start_mbatch)
+        logger.debug('Minibatch completed. speed=%d [pairs/sec]' % speed)
 
-        with Timer('Validation epoch {}'.format(epoch)):
-            perfs[epoch+1] = perf_eval()
-        logger.debug("Performance evaluation after epoch {}: {}".format(epoch, json.dumps(perfs[epoch+1])))
-        logger.info("  training error:\t\t{:.20f}".format(perfs[epoch+1]['training']['error']))
-        logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[epoch+1]['training']['accuracy'] * 100))
-        logger.info("  validation error:\t\t{:.20f}".format(perfs[epoch+1]['validation']['error']))
-        logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[epoch+1]['validation']['accuracy'] * 100))
+    with Timer('Validation epoch {}'.format(epoch)):
+        perfs[completed_epochs] = perf_eval()
+    logger.debug("Performance evaluation after epoch {}({} total): {}".format(
+            epoch, completed_epochs, json.dumps(perfs[completed_epochs])))
+    logger.info("  training error:\t\t{:.20f}".format(perfs[completed_epochs]['training']['error']))
+    logger.info("  training accuracy:\t\t{:.2f} %".format(perfs[completed_epochs]['training']['accuracy'] * 100))
+    logger.info("  validation error:\t\t{:.20f}".format(perfs[completed_epochs]['validation']['error']))
+    logger.info("  validation accuracy:\t\t{:.2f} %".format(perfs[completed_epochs]['validation']['accuracy'] * 100))
 
-        hists[epoch+1] = get_hists()
+    hists[completed_epochs] = get_hists()
+    dump_model(cos_net, out_prefix + 'model' + str(completed_epochs).zfill(4)+ '.json')
 
-        dump_model(cos_net, out_prefix + 'model' + str(epoch).zfill(len(str(env['EPOCHS'])))+ '.json')
+    end_epoch = time.time()
+    dur_epoch = end_epoch-start_epoch
+    logger.info("Completed epoch %s of %d, time=%.3f[sec]"                 % (epoch + 1, env['EPOCHS'], dur_epoch))
+    logger.info('Timer(Epoch)\t\t%s' % datetime.timedelta(seconds=dur_epoch))
 
-        end_epoch = time.time()
-        dur_epoch = end_epoch-start_epoch
-        logger.info("Completed epoch %s of %d, time=%.3f[sec]"                     % (epoch + 1, env['EPOCHS'], dur_epoch))
-        logger.info('Timer(Epoch)\t\t%s' % datetime.timedelta(seconds=dur_epoch))
-        
-    logger.info('Training complete')
+logger.info('Training complete')
 
+
+# ## Performance metrics
 
 # In[ ]:
 
-logger.debug('Histograms:' + str(hists))
-logger.info('Plotting histograms..')
+logger.info('Dumping histograms')
+with open(out_prefix + 'histograms.json', 'w') as f:
+    json.dump(json_encode_hists(hists), f)
+    
+logger.info('Dumping perfomance metrics')
+with open(out_prefix + 'performances.json', 'w') as f:
+    json.dump(json_encode_perfs(perfs), f)
+
+logger.info('Plotting histograms')
 plot_hists(hists)
 
-
-# In[ ]:
-
-logger.debug('Performance evaluation: ' + json.dumps(perfs))
-
-for metric in ['accuracy', 'error']:
-    plt.figure()
-    for zet in ['training', 'validation']:
-        y = [perf[zet][metric] for epoch, perf in sorted(perfs.items())]
-        x = range(len(y))
-        plt.plot(x, y, '.-', label='{}'.format(zet))
-    plt.title('Performance ({}) over epochs'.format(metric))
-    plt.legend()
-    plt.xticks(perfs.keys())
-    plt.savefig(
-        out_prefix + 'perf_{}.pdf'.format(metric),
-        bbox_inches='tight',
-    )
-    plt.show()
-    plt.close()
-
-
-# ## Dump model
-
-# In[ ]:
-
-dump_model(cos_net, out_prefix + 'model.json')
+logger.info('Plotting performance')
+plot_perfs(perfs)
 
 
 # ## Analyse errors in correlation detection
