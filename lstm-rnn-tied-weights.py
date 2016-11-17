@@ -704,9 +704,9 @@ def load_model(net, filename):
     with open(filename) as f:
         model = json.loads(f.read())
 
-    # Order accoording to current model (JSON might reorder)
+    # Order according to current model (JSON might reorder)
     params = get_all_params(cos_net)
-    values = [np.array(model['model'][p.name]) for p in params]
+    values = [np.array(model['model'][p.name], dtype=theano.config.floatX) for p in params]
 
     set_all_param_values(cos_net, values)
     logger.info("Model loaded")
