@@ -114,6 +114,8 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
+if os.environ.get('SLURM_JOB_ID', False):
+    runid += '-slurm-' + os.environ['SLURM_JOB_ID']
 out_dir = OUTPUT + '/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
