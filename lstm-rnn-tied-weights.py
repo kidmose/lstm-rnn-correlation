@@ -69,6 +69,7 @@ logging.getLogger().handlers = []
 
 import sys
 import os
+import psutil
 import time
 import glob
 import json
@@ -113,7 +114,10 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
-runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
+p_start = psutil.Process(os.getpid()).create_time()
+p_start = time.localtime(p_start)
+p_start = datetime.datetime.fromtimestamp(time.mktime(p_start))
+runid = p_start.strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
 if os.environ.get('SLURM_JOB_ID', False):
     runid += '-slurm-' + os.environ['SLURM_JOB_ID']
 out_dir = OUTPUT + '/' + runid
