@@ -875,22 +875,11 @@ labels = tuple(['benign']) + labels[1:]
 
 cols = ['TP', 'TN', 'FP', 'FN']
 errors = pd.DataFrame(np.array(errors), columns=cols, index=labels, dtype=int)
-logger.debug('Errors table for latex: ' + errors[cols].to_latex())
-logger.info('Errors table:\n'+ errors[cols].to_string())
-errors[cols]
-
-
-# In[ ]:
+errors.loc['total'] = errors.sum()
 
 # Normalised errors
 cols_norm = [c + ' (Norm.)' for c in cols]
 errors[cols_norm] = (errors[cols].T / errors[cols].sum(axis=1)).T
-logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
-logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
-errors[cols_norm]
-
-
-# In[ ]:
 
 # error rates
 cols_rate = ['TPR', 'TNR', 'FPR', 'FNR']
@@ -898,6 +887,23 @@ errors['TPR'] = errors['TP'].astype(float) / (errors['TP'] + errors['FN'])
 errors['TNR'] = errors['TN'].astype(float) / (errors['TN'] + errors['FP'])
 errors['FPR'] = errors['FP'].astype(float) / (errors['TN'] + errors['FP'])
 errors['FNR'] = errors['FN'].astype(float) / (errors['TP'] + errors['FN'])
+
+
+# In[ ]:
+
+logger.debug('Errors table for latex: ' + errors[cols].to_latex())
+logger.info('Errors table:\n'+ errors[cols].to_string())
+errors[cols]
+
+
+# In[ ]:
+
+logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
+logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
+errors[cols_norm]
+
+
+# In[ ]:
 
 logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
 logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
@@ -916,9 +922,10 @@ colors = ['g', 'b', 'r', 'y']
 
 fig, ax = plt.subplots()
 for x, (metric, color) in enumerate(zip(cols_norm, colors)):
+    y = errors[metric].iloc[:-1] # skip total
     rect = plt.bar(
         index_x + bar_width * x,
-        errors[metric],
+        y,
         bar_width,
         alpha=0.8,
         color=color,
@@ -939,9 +946,10 @@ plt.savefig(out_prefix+'detection_norm.pdf', bbox_inches='tight')
 
 fig, ax = plt.subplots()
 for x, (metric, color) in enumerate(zip(cols, colors)):
+    y = errors[metric].iloc[:-1] # skip total
     rect = plt.bar(
         index_x + bar_width * x,
-        errors[metric],
+        y,
         bar_width,
         alpha=0.8,
         color=color,
@@ -960,64 +968,80 @@ plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 # In[ ]:
 
 logger.info('Complete error table:\n'+errors.to_string())
-logger.debug('Complete error table, latex:\n'+errors.to_string())
+logger.debug('Complete error table, latex:\n'+errors.to_latex())
 errors.to_csv(out_prefix + 'errors.csv')
 
 
-# # Clustering
+## Clustering
 
 # In[ ]:
 
-def _get_alert_batch(data, cut):
+def _get_alert_batch(data, cut, max_samples=0):
     """
     Encode and structures single alerts similarly to pairs
 
     Similar to _get_batch, but ommitting second alerts and correlation.
     Currently, wont do batching.
     """
-    data = shuffle(data[data['cut'] == cut]).head(env['CLUSTER_SAMPLES'])
+    data = shuffle(data[data['cut'] == cut])
+    if max_samples:
+        data = data.head(max_samples)
     alerts = np.array(data['encoded_alert'].values.tolist())
     masks = np.array(data['mask'].values.tolist())
     incidents = np.array(data['incident'].values.tolist())
     return alerts, masks, incidents
 
-clust_alerts_train = _get_alert_batch(data, 0)
-clust_alerts_val = _get_alert_batch(data, 1)
-clust_alerts_test = _get_alert_batch(data, 2)
+def precompute_distance_matrix(X):
+    """
+    precomputing takes 20 sec/500 samples on js3, OMP_NUM_THREADS=16
+    precomputing takes 9 min/2632 samples on js3, OMP_NUM_THREADS=16
+    """
+    with Timer('Precomputing distances for {} samples'.format(len(X))):
+        precomp_dist = np.zeros(shape=(len(X), len(X)))
+        for i in range(len(X)):
+            for j in range(len(X)):
+                precomp_dist[i, j] = sp.spatial.distance.cosine(X[i], X[j])
+    return precomp_dist
 
 
-# ## Cluster train data
+# In[ ]:
+
+logger.info('Getting alerts for clustering')
+clust_alerts = {
+    'train': _get_alert_batch(data, 0),
+    'validation': _get_alert_batch(data, 1),
+    'test': _get_alert_batch(data, 2),
+}
+
+logger.info("Precomputing clustering alert distances")
+
+X = dict()
+X_dist_precomp = dict()
+y = dict()
+for (cut, v) in clust_alerts.items():
+    alerts_matrix, masks_matrix, incidents_vector = v
+    X[cut] = alert_to_vector(alerts_matrix, masks_matrix)
+    X_dist_precomp[cut] = precompute_distance_matrix(X[cut])
+    y[cut] = incidents_vector
+
+
+# In[ ]:
+
+for cut in y.keys():
+    logger.info("Breakdown of {} labels:\n".format(cut) +  break_down_data(y[cut]))
+
+
+### Cluster train data
 
 # In[ ]:
 
 from sklearn.cluster import DBSCAN
 from sklearn import metrics
 
-logger.info("Clustering of alerts")
-
-alerts_matrix, masks_matrix, incidents_vector = clust_alerts_train
-X = alert_to_vector(alerts_matrix, masks_matrix)
-y = incidents_vector
-logger.info("Breakdown of labels:\n"+ break_down_data(y))
-
-logger.info("Precomputing distances")
-precomp_dist = np.zeros(shape=(len(X), len(X)))
-for i in range(len(X)):
-    for j in range(len(X)):
-        precomp_dist[i, j] = sp.spatial.distance.cosine(X[i], X[j])
-
-
-# In[ ]:
-
-logger.info("Running clustering algorithm")
-epss = np.array([0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1])
-min_sampless = np.array([1, 3, 10, 30])
-homogenity = np.zeros(shape=(len(epss), len(min_sampless)))
-n_clusters = np.zeros_like(homogenity, dtype=int)
-f1 = np.zeros_like(homogenity)
-noise = np.zeros_like(homogenity, dtype=int)
-cl_model = np.zeros_like(homogenity).tolist()
-mapper = np.zeros_like(homogenity).tolist()
+def cluster(eps, min_samples, X_dist_precomp):
+    return DBSCAN(
+        eps=eps, min_samples=min_samples, metric='precomputed'
+    ).fit(X_dist_precomp)
 
 def build_cluster_to_incident_mapper(y, y_pred):
     # Assign label to clusters according which incident has the largest part of its alert in the given cluster
