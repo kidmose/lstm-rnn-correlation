@@ -239,7 +239,7 @@ class Timer(object):
         self.log('Timer(%s):\t%s' % (self.name, self.dur))
 
 
-# ## Build network
+### Build network
 
 # In[ ]:
 
@@ -271,7 +271,7 @@ mask_var2 = T.matrix('masks2')
 target_var = T.vector('targets')
 
 
-# ### First line
+#### First line
 
 # In[ ]:
 
@@ -352,7 +352,7 @@ net = l_slice
 logger.info('First line built')
 
 
-# ### Second line as a copy with shared weights
+#### Second line as a copy with shared weights
 
 # In[ ]:
 
@@ -367,7 +367,7 @@ assert (net_pred == net_pred2).all(), "Output mismatch, two lines must produce s
 logger.info('Second line built')
 
 
-# ### Merge lines
+#### Merge lines
 
 # In[ ]:
 
@@ -436,7 +436,7 @@ with Timer('Compiling theano', logger.info):
     alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 
-# ## Load data
+### Load data
 
 # In[ ]:
 
@@ -461,7 +461,7 @@ test_data2['cut'] = 1
 test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 
-# ## Encode
+### Encode
 
 # In[ ]:
 
@@ -493,7 +493,7 @@ assert (data['alert'].map(len) == data['mask'].map(sum)).all(), "Sum of mask is 
 assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).all(),     "Last non-zero index of mask is not equal to length of alert"
 
 
-# ## Cut data, pairing
+### Cut data, pairing
 
 # In[ ]:
 
@@ -572,7 +572,7 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0, include_incidents=False)
                  yield inputs1, inputs2, masks1, masks2, targets
 
 
-# ## Plot Empirical Distribution Functions for model output, by ground truth for correlation
+### Plot Empirical Distribution Functions for model output, by ground truth for correlation
 
 # In[ ]:
 
@@ -635,7 +635,7 @@ def plot_hists(hists):
             plt.close()
 
 
-# ## Performance evaluation
+### Performance evaluation
 
 # In[ ]:
 
@@ -701,7 +701,7 @@ def plot_perfs(perfs):
         plt.close()
 
 
-# ## Load model
+### Load model
 
 # In[ ]:
 
@@ -725,7 +725,7 @@ def dump_model(net, filename):
     logger.info('Model dumped')
 
 
-# ## Load old job for continuation or start new
+### Load old job for continuation or start new
 
 # In[ ]:
 
@@ -766,7 +766,7 @@ else:
     completed_epochs = 0
 
 
-# ## Train
+### Train
 
 # In[ ]:
 
@@ -819,7 +819,7 @@ for epoch, completed_epochs in enumerate(range(
 logger.info('Training complete')
 
 
-# ## Performance metrics
+### Performance metrics
 
 # In[ ]:
 
@@ -838,7 +838,7 @@ logger.info('Plotting performance')
 plot_perfs(perfs)
 
 
-# ## Analyse errors in correlation detection
+### Analyse errors in correlation detection
 
 # In[ ]:
 
@@ -1059,23 +1059,153 @@ def build_cluster_to_incident_mapper(y, y_pred):
     mapper[-1] = -1 # Don't rely on what DBSCAN deems as noise
     return mapper
 
+def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
+    # Result is noise by default
+    y_new = np.ones(shape=len(X_new), dtype=int)*-1 
+
+    # Iterate all input samples for a label
+    for j, x_new in enumerate(X_new):
+        for i, x_core in enumerate(X['train'][dbscan_model.core_sample_indices_]): 
+            if  metric(x_new, x_core) < dbscan_model.eps:
+                # Assign label of x_core to x_new
+                y_new[j] = dbscan_model.labels_[dbscan_model.core_sample_indices_[i]]
+                break
+    return y_new
+
+
+# In[ ]:
+
+logger.info("Iterating clustering algorithm parameters")
+epss = np.array([0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1])
+min_sampless = np.array([1, 3, 10, 30])
+
+def ParamSpaceMatrix(dtype=None):
+    return np.zeros(shape=(len(epss), len(min_sampless)), dtype=dtype)
+
+cl_model = ParamSpaceMatrix(dtype=object)
+mapper = ParamSpaceMatrix(dtype=object)
+
+cuts = ['train', 'validation']
+
+def ParamSpaceMatrices(dtype=None):
+    return {cut : ParamSpaceMatrix(dtype=dtype) for cut in cuts}
+
+
+# In[ ]:
+
+# Cluster and build mapper
 for i, eps in enumerate(epss):
     for j, min_samples in enumerate(min_sampless):
-        cl_model[i][j] = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        y_pred = cl_model[i][j].labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-        noise[i,j] = sum(y_pred == -1)
-        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
-        
-        mapper[i][j] = build_cluster_to_incident_mapper(y, y_pred)
-        y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
-        f1[i,j] = metrics.f1_score(y, y_pred_inc, average='weighted')
+        logger.info("Clustering, eps={}, min_samples={}".format(eps, min_samples))
+        # Cluster
+        cl_model[i,j] = cluster(eps, min_samples, X_dist_precomp['train'])
+        # get cluster assignments
+        y_pred = cl_model[i,j].labels_ 
+        # Build classifier - get mapper used for classification
+        mapper[i,j] = build_cluster_to_incident_mapper(y['train'], y_pred)
 
-        logger.info(
-            "DBSCAN with (eps, min_samples)=({:1.0e},{:>2d}), n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
-                eps, min_samples, n_clusters[i,j], homogenity[i,j], f1[i,j], noise[i,j],
-            ))
+
+# In[ ]:
+
+# predict 
+y_pred = ParamSpaceMatrices(dtype=object)
+y_pred_inc = ParamSpaceMatrices(dtype=object)
+
+for cut in cuts:
+    for i, eps in enumerate(epss):
+        for j, min_samples in enumerate(min_sampless):
+            if cut == 'train':
+                # pred is abused to hold clustering results
+                y_pred[cut][i,j] = cl_model[i,j].labels_ # cluster assignment
+                y_pred_inc[cut][i,j] = y[cut] # true incident label
+            elif cut == 'validation':
+                logger.info('Predicting for (eps, min_samples)=({:1.0e},{:>2d})'.format(eps, min_samples))
+                y_pred[cut][i,j] = dbscan_predict(cl_model[i][j], X[cut])
+                y_pred_inc[cut][i,j] = np.array([mapper[i,j][el] for el in y_pred[cut][i,j]]) # predict incident
+            else:
+                raise NotImplementedError('Unexpected value for cut:{}'.format(cut))
+            
+
+
+# In[ ]:
+
+def false_alert_rate_outliers_score(y, y_pred):
+    idx_outliers = y_pred == -1
+    return (y[idx_outliers] == -1).mean()
+
+def arf_score(y, y_pred):
+    return len(y) / len(set(y_pred))
+
+def narf_score(y, y_pred):
+    return (len(y) / len(set(y_pred)) - 1) / (len(y) - 1)
+
+def imr_score(y, y_pred):
+    df_clustering = pd.DataFrame({
+        'cluster': y_pred,
+        'inc_true': y,
+    })
+    cluster_sizes = pd.DataFrame({'cluster_size': df_clustering[df_clustering.cluster != -1].groupby('cluster').size()})
+    df_clustering = pd.merge(df_clustering, cluster_sizes.reset_index(), on='cluster', how='outer')
+    # asuming one alert is picked at random from each cluster;
+    # probability that given alert is picked to represent the cluster it belongs to
+    df_clustering['alert_pick_prob'] = 1/df_clustering.cluster_size 
+    # probability distribution of what incident a cluster will be asumed to represent
+    df_prob = pd.DataFrame(df_clustering.groupby(['cluster', 'inc_true']).sum().alert_pick_prob.rename('inc_hit'))
+    # probability that a given incident will not come out of a cluster
+    df_prob['inc_miss'] = 1 - df_prob.inc_hit.fillna(0)
+    assert (df_prob[df_prob.inc_miss < 0].inc_miss.abs() < 1e-12).all(), "Error larger than 1e-12, still just imprecission?"
+    df_prob = df_prob.abs()
+    # ... of any cluster
+    inc_miss_prob = df_prob.reset_index().groupby('inc_true').inc_miss.prod().rename('inc_miss_prob')
+    inc_miss_prob = inc_miss_prob[inc_miss_prob.index != -1] # Don't care about missing the noise pseudo-incident
+    return inc_miss_prob.sum() / df_clustering[df_clustering.inc_true != -1].inc_true.unique().shape[0]
+
+
+# In[ ]:
+
+# calculating metrics
+
+# clustering
+n_clusters = ParamSpaceMatrices(dtype=int)
+homogenity = ParamSpaceMatrices()
+noise = ParamSpaceMatrices(dtype=int)
+noise_false_rate = ParamSpaceMatrices()
+# classification, general
+accuracy = ParamSpaceMatrices()
+precision = ParamSpaceMatrices()
+recall = ParamSpaceMatrices()
+f1 = ParamSpaceMatrices()
+# correlating and filtering metrics
+arf = ParamSpaceMatrices()
+narf = ParamSpaceMatrices()
+imr = ParamSpaceMatrices()
+faro = ParamSpaceMatrices()
+
+for cut in cuts:
+    for i, eps in enumerate(epss):
+        for j, min_samples in enumerate(min_sampless):
+            # clustering metrics
+            # Number of clusters in labels, ignoring noise if present.
+            n_clusters[cut][i,j] = len(set(y_pred[cut][i,j])) - (1 if -1 in y_pred[cut][i,j] else 0)
+            noise[cut][i,j] = sum(y_pred[cut][i,j] == -1)
+            homogenity[cut][i,j] = metrics.homogeneity_score(y[cut], y_pred[cut][i,j])
+            # classification metrics
+            accuracy[cut][i,j] = metrics.accuracy_score(y[cut], y_pred_inc[cut][i,j])
+            precision[cut][i,j] = metrics.precision_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            recall[cut][i,j] = metrics.recall_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            f1[cut][i,j] = metrics.f1_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            # correlating and filtering
+            arf[cut][i,j] = arf_score(y[cut], y_pred[cut][i,j])
+            narf[cut][i,j] = narf_score(y[cut], y_pred[cut][i,j])
+            imr[cut][i,j] = imr_score(y[cut], y_pred[cut][i,j])
+            faro[cut][i,j] = false_alert_rate_outliers_score(y[cut], y_pred[cut][i,j])
+
+            logger.info(
+                "Performance on {} cut with (eps, min_samples)=({:1.0e},{:>2d}): n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
+                    cut, eps, min_samples, n_clusters[cut][i,j], homogenity[cut][i,j], f1[cut][i,j], noise[cut][i,j],
+                )
+            )
+        
 
 
 # In[ ]:
@@ -1083,7 +1213,7 @@ for i, eps in enumerate(epss):
 def param_plot_prepare(
     title,
 ):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10,6))
     ax.set_title(title)
 
     ax.set_yscale('log')
@@ -1157,88 +1287,103 @@ def param_plot_save(filename):
 
 # In[ ]:
 
-param_plot_prepare('Cluster homogenity by DBSCAN parameters')
-param_plot_scatter(homogenity, epss, min_sampless)
-param_plot_annotate(homogenity, epss, min_sampless, fmt='{:.2f}')
-param_plot_save(out_prefix+'cluster_homogenity.pdf')
-
-param_plot_prepare('Cluster count by DBSCAN parameters')
-param_plot_scatter(n_clusters, epss, min_sampless)
-param_plot_annotate(n_clusters, epss, min_sampless)
-param_plot_save(out_prefix+'cluster_count.pdf')
-
-param_plot_prepare('Detection performance (F1) by DBSCAN parameters')
-param_plot_scatter(f1, epss, min_sampless)
-param_plot_annotate(f1, epss, min_sampless, fmt='{:.2f}')
-param_plot_save(out_prefix+'cluster_detection.pdf')
-
-
-
-# ## Cluster validation data
-
-# In[ ]:
-
-def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
-    # Result is noise by default
-    y_new = np.ones(shape=len(X_new), dtype=int)*-1 
-    
-    # Iterate all input samples for a label
-    for j, x_new in enumerate(X_new):
-        for i, x_core in enumerate(dbscan_model.components_): 
-            if  metric(x_new, x_core) < dbscan_model.eps:
-                # Assign label of x_core to x_new
-                y_new[j] = dbscan_model.labels_[dbscan_model.core_sample_indices_[i]]
-                break
-    return y_new
-
-
-# In[ ]:
-
-logger.info("Applying clusters to validation data")
-
-alerts_matrix, masks_matrix, incidents_vector = clust_alerts_val
-X = alert_to_vector(alerts_matrix, masks_matrix)
-y = incidents_vector
-
-logger.info("Breakdown of labels:\n"+ break_down_data(y))
-
-for i, eps in enumerate(epss):
-    for j, min_samples in enumerate(min_sampless):
-        y_pred = dbscan_predict(cl_model[i][j], X)
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters[i,j] = len(set(y_pred)) - (1 if -1 in y_pred else 0)
-        noise[i,j] = sum(y_pred == -1)
-        homogenity[i,j] = metrics.homogeneity_score(y, y_pred)
+for label, values, fmt in [
+    ('Cluster count', n_clusters, '{}'),
+    ('Cluster homogenity', homogenity, '{:.2f}'),
+    ('Noise (Clustering outliers)', noise, '{}'),
+]:
+    for cut in cuts:
+        param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
+        param_plot_scatter(values[cut], epss, min_sampless)
+        param_plot_annotate(values[cut], epss, min_sampless, fmt=fmt)
         
-        y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
-        f1[i,j] = metrics.f1_score(y, y_pred_inc, average='weighted')
-
-        logger.info(
-            "Validation of DBSCAN with (eps, min_samples)=({:1.0e},{:>2d}), n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
-                eps, min_samples, n_clusters[i,j], homogenity[i,j], f1[i,j], noise[i,j],
-            ))
+        param_plot_save(
+            '{}{}_{}.pdf'.format(
+                out_prefix,
+                label.replace('(','').replace(')','').replace(" ", "_").lower(),
+                cut
+            )
+        )
 
 
 # In[ ]:
 
-param_plot_prepare('Validation of cluster homogenity by DBSCAN parameters')
-param_plot_scatter(homogenity, epss, min_sampless)
-param_plot_annotate(homogenity, epss, min_sampless, fmt='{:.2f}')
-param_plot_save(out_prefix+'cluster_homogenity_val.pdf')
+for label, values, fmt in [
+    ('Incident prediction accuracy', accuracy, '{:.2f}'),
+    ('Incident prediction precision', precision,  '{:.2f}'),
+    ('Incident prediction recall', recall, '{:.2f}'),
+    ('Incident prediction F1 score', f1, '{:.2f}'),
+]:
+    for cut in ['validation']: # training evaluated on true labels for clustering is of little use
+        param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
+        param_plot_scatter(values[cut], epss, min_sampless)
+        param_plot_annotate(values[cut], epss, min_sampless, fmt=fmt)
+        
+        param_plot_save(
+            '{}{}_{}.pdf'.format(
+                out_prefix,
+                label.replace('(','').replace(')','').replace(" ", "_").lower(),
+                cut
+            )
+        )
 
-param_plot_prepare('Validation of cluster count by DBSCAN parameters')
-param_plot_scatter(n_clusters, epss, min_sampless)
-param_plot_annotate(n_clusters, epss, min_sampless)
-param_plot_save(out_prefix+'cluster_count_val.pdf')
 
-param_plot_prepare('Validation of detection performance (F1) by DBSCAN parameters')
-param_plot_scatter(f1, epss, min_sampless)
-param_plot_annotate(f1, epss, min_sampless, fmt='{:.2f}')
-param_plot_save(out_prefix+'cluster_detection_val.pdf')
+# In[ ]:
+
+for label, values, fmt in [
+    ('Alert Reduction Factor', arf, '{:.2f}'),
+    ('Normalised Alert Reduction Factor', narf, '{:.2e}'),
+    ('Incident Miss Rate', imr, '{:.2e}'),
+    ('False alerts rate among outliers', faro, '{:.2f}'),
+]:
+    for cut in cuts:
+        param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
+        param_plot_scatter(values[cut], epss, min_sampless)
+        param_plot_annotate(values[cut], epss, min_sampless, fmt=fmt)
+        
+        param_plot_save(
+            '{}{}_{}.pdf'.format(
+                out_prefix,
+                label.replace('(','').replace(')','').replace(" ", "_").lower(),
+                cut
+            )
+        )
+
+
+# In[ ]:
+
+def cm_inc_clust(y, y_pred):
+    cm_inc_clust = pd.DataFrame(
+        metrics.confusion_matrix(y, y_pred),
+        index=sorted(set.union(set(y), set(y_pred))),
+        columns=sorted(set.union(set(y), set(y_pred))),
+    )
+    # drop dummy row for non-existing incident IDs
+    assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
+    cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
+
+    # drop dummy collumns for non-existing cluster IDs
+    assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
+    cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
+
+    cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
+    cm_inc_clust.rename(columns={-1: 'noise'}, inplace=True)
+    return cm_inc_clust
+
+def cm_inc_inc(y, y_pred_inc):
+    cm_inc_inc = pd.DataFrame(
+        metrics.confusion_matrix(y, y_pred_inc),
+        index=sorted(set.union(set(y), set(y_pred_inc))),
+        columns=sorted(set.union(set(y), set(y_pred_inc))),
+    )
+
+    cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
+    cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
+    return cm_inc_inc
 
 
 
-# ## Clustering - test data
+### Clustering - test data
 
 # In[ ]:
 
@@ -1275,37 +1420,12 @@ sorted(set.union(set(y), set(y_pred)))
 
 # In[ ]:
 
-cm_inc_clust = pd.DataFrame(
-    metrics.confusion_matrix(y, y_pred),
-    index=sorted(set.union(set(y), set(y_pred))),
-    columns=sorted(set.union(set(y), set(y_pred))),
-)
-# drop dummy row for non-existing incident IDs
-assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
-cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
-
-# drop dummy collumns for non-existing cluster IDs
-assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
-cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
-
-cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
-cm_inc_clust.rename(columns={-1: 'noise'}, inplace=True)
-
 logger.info("Incident (i) to cluster (j) \"confusion matrix\":\n" + cm_inc_clust.to_string())
 logger.debug("Incident (i) to cluster (j) \"confusion matrix\" in latex:\n" + cm_inc_clust.to_latex())
 cm_inc_clust
 
 
 # In[ ]:
-
-cm_inc_inc = pd.DataFrame(
-    metrics.confusion_matrix(y, y_pred_inc),
-    index=sorted(set.union(set(y), set(y_pred_inc))),
-    columns=sorted(set.union(set(y), set(y_pred_inc))),
-)
-
-cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
-cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
 
 logger.info("Incident (i) to Incident (j) confusion matrix:\n" + cm_inc_inc.to_string())
 logger.debug("Incident (i) to Incident (j) confusion matrix in latex:\n" + cm_inc_inc.to_latex())
@@ -1347,7 +1467,7 @@ logger.info('Testing completed, exiting')
 sys.exit(0)
 
 
-# ## Analysing results
+### Analysing results
 
 # In[ ]:
 
