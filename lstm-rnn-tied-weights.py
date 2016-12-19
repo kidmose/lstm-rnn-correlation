@@ -117,6 +117,8 @@ OUTPUT = 'output'
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
 if os.environ.get('SLURM_JOB_ID', False):
     runid += '-slurm-' + os.environ['SLURM_JOB_ID']
+if os.environ.get('SLURM_ARRAY_TASK_ID', False):
+    runid += '_' + os.environ['SLURM_ARRAY_TASK_ID']
 out_dir = OUTPUT + '/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
