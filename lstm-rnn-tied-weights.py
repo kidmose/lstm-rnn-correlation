@@ -114,10 +114,7 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
-p_start = psutil.Process(os.getpid()).create_time()
-p_start = time.localtime(p_start)
-p_start = datetime.datetime.fromtimestamp(time.mktime(p_start))
-runid = p_start.strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
 if os.environ.get('SLURM_JOB_ID', False):
     runid += '-slurm-' + os.environ['SLURM_JOB_ID']
 out_dir = OUTPUT + '/' + runid
@@ -151,6 +148,8 @@ env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
+env['VAL_CUT'] = int(os.environ.get('VAL_CUT', -1))
+assert (0 <= env['VAL_CUT']) and (env['VAL_CUT'] <= 9), "Invalid cross validation cut: {}".format(env['VAL_CUT'])
 
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
@@ -168,18 +167,6 @@ env['MAX_HOURS'] = float(os.environ.get('MAX_HOURS', '23.5'))
 start_script = datetime.datetime.now()
 end_script_before = start_script + datetime.timedelta(hours=env['MAX_HOURS'])
 logger.info('Started at {}, must end before {}'.format(start_script, end_script_before))
-
-# Clustering
-env['CLUSTER_SAMPLES'] = int(os.environ.get('CLUSTER_SAMPLES', 500))
-# Perform tests if EPS and min_samples are set
-try:
-    env['TEST_EPS'] = float(os.environ['TEST_EPS'])
-except:
-    env['TEST_EPS'] = None
-try:
-    env['TEST_MS'] = int(os.environ['TEST_MS'])
-except:
-    env['TEST_MS'] = None
 
 # Continue existing, old job
 env['OLD_JOB'] = os.environ.get('OLD_JOB', None)
@@ -441,7 +428,7 @@ with Timer('Compiling theano', logger.info):
 # In[ ]:
 
 with Timer('Load data'):
-    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned-strat50.log.1465471791')
+    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned-strat50-cross-val.log.1465471791')
 
 # Test data
 test_incidents = np.array(['1', '2', 'benign']*2)
@@ -530,17 +517,15 @@ def shuffle(pairs):
     np.random.seed(rndseed())
     return pairs.reindex(np.random.permutation(pairs.index))
 
-def take_and_modify_cut(data, cut):
-    data = data[(data['cut']==cut)]
-    pairs = get_pairs(data)
-    pairs = shuffle(pairs)
-    pairs = add_cor_col(pairs)
-    return pairs
+
+# In[ ]:
+
+alerts_train = data[data.cut != env['VAL_CUT']]
+alerts_val = data[data.cut == env['VAL_CUT']]
 
 with Timer('Build pairs'):
-    pairs_train = take_and_modify_cut(data, 0)
-    pairs_val = take_and_modify_cut(data, 1)
-    pairs_test = take_and_modify_cut(data, 2)
+    pairs_train = add_cor_col(shuffle(get_pairs(alerts_train)))
+    pairs_val = add_cor_col(shuffle(get_pairs(alerts_val)))
 
 
 # In[ ]:
@@ -976,14 +961,14 @@ errors.to_csv(out_prefix + 'errors.csv')
 
 # In[ ]:
 
-def _get_alert_batch(data, cut, max_samples=0):
+def _get_alert_batch(data, max_samples=0):
     """
     Encode and structures single alerts similarly to pairs
 
     Similar to _get_batch, but ommitting second alerts and correlation.
     Currently, wont do batching.
     """
-    data = shuffle(data[data['cut'] == cut])
+    data = shuffle(data)
     if max_samples:
         data = data.head(max_samples)
     alerts = np.array(data['encoded_alert'].values.tolist())
@@ -1008,9 +993,8 @@ def precompute_distance_matrix(X):
 
 logger.info('Getting alerts for clustering')
 clust_alerts = {
-    'train': _get_alert_batch(data, 0),
-    'validation': _get_alert_batch(data, 1),
-    'test': _get_alert_batch(data, 2),
+    'train': _get_alert_batch(alerts_train),
+    'validation': _get_alert_batch(alerts_val),
 }
 
 logger.info("Precomputing clustering alert distances")
@@ -1352,6 +1336,12 @@ for label, values, fmt in [
 
 # In[ ]:
 
+logger.info('One fold of cross validation completed')
+sys.exit(0)
+
+
+# In[ ]:
+
 def cm_inc_clust(y, y_pred):
     cm_inc_clust = pd.DataFrame(
         metrics.confusion_matrix(y, y_pred),
@@ -1380,7 +1370,6 @@ def cm_inc_inc(y, y_pred_inc):
     cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
     cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
     return cm_inc_inc
-
 
 
 ### Clustering - test data
