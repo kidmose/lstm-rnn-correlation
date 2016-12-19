@@ -1,6 +1,8 @@
 #!/bin/bash
-#SBATCH -A aaubotsensor_gpu
+#SBATCH --account=aaubotsensor_gpu
 #SBATCH --time=24:00:00
+#SBATCH --array=0-9
+#SBATCH --output="lstm-rnn-correlation/output/slurm-%A_%a.out"
 
 # Copyright (C) Egon Kidmose 2015-2017
 # 
@@ -47,6 +49,6 @@ echo "Activating virtual environment" && \
     (echo "Failed to activate virtual environment"; exit -4)
 
 echo "Starting workload" && \
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python lstm-rnn-tied-weights.py && \
+    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
     echo "Workload completed sucessfully" || \
     (echo "Workload failed"; exit -5)
