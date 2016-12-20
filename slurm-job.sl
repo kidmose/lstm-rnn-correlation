@@ -49,6 +49,6 @@ echo "Activating virtual environment" && \
     (echo "Failed to activate virtual environment"; exit -4)
 
 echo "Starting workload" && \
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
+    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
     echo "Workload completed sucessfully" || \
     (echo "Workload failed"; exit -5)
