@@ -114,11 +114,16 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
-runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-") + socket.gethostname()
-if os.environ.get('SLURM_JOB_ID', False):
-    runid += '-slurm-' + os.environ['SLURM_JOB_ID']
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-")
 if os.environ.get('SLURM_ARRAY_TASK_ID', False):
-    runid += '_' + os.environ['SLURM_ARRAY_TASK_ID']
+    runid += '-slurm-{}_{}'.format(
+        os.environ['SLURM_ARRAY_JOB_ID'],
+        os.environ['SLURM_ARRAY_TASK_ID']
+    )
+elif os.environ.get('SLURM_JOB_ID', False):
+    runid += '-slurm-' + os.environ['SLURM_JOB_ID']
+else:
+     runid += socket.gethostname()
 out_dir = OUTPUT + '/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
@@ -228,7 +233,7 @@ class Timer(object):
         self.log('Timer(%s):\t%s' % (self.name, self.dur))
 
 
-### Build network
+# ## Build network
 
 # In[ ]:
 
@@ -260,7 +265,7 @@ mask_var2 = T.matrix('masks2')
 target_var = T.vector('targets')
 
 
-#### First line
+# ### First line
 
 # In[ ]:
 
@@ -341,7 +346,7 @@ net = l_slice
 logger.info('First line built')
 
 
-#### Second line as a copy with shared weights
+# ### Second line as a copy with shared weights
 
 # In[ ]:
 
@@ -356,7 +361,7 @@ assert (net_pred == net_pred2).all(), "Output mismatch, two lines must produce s
 logger.info('Second line built')
 
 
-#### Merge lines
+# ### Merge lines
 
 # In[ ]:
 
@@ -425,7 +430,7 @@ with Timer('Compiling theano', logger.info):
     alert_to_vector = theano.function([input_var, mask_var], get_output(l_slice))
 
 
-### Load data
+# ## Load data
 
 # In[ ]:
 
@@ -450,7 +455,7 @@ test_data2['cut'] = 1
 test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 
-### Encode
+# ## Encode
 
 # In[ ]:
 
@@ -482,7 +487,7 @@ assert (data['alert'].map(len) == data['mask'].map(sum)).all(), "Sum of mask is 
 assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).all(),     "Last non-zero index of mask is not equal to length of alert"
 
 
-### Cut data, pairing
+# ## Cut data, pairing
 
 # In[ ]:
 
@@ -559,7 +564,7 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0, include_incidents=False)
                  yield inputs1, inputs2, masks1, masks2, targets
 
 
-### Plot Empirical Distribution Functions for model output, by ground truth for correlation
+# ## Plot Empirical Distribution Functions for model output, by ground truth for correlation
 
 # In[ ]:
 
@@ -622,7 +627,7 @@ def plot_hists(hists):
             plt.close()
 
 
-### Performance evaluation
+# ## Performance evaluation
 
 # In[ ]:
 
@@ -688,7 +693,7 @@ def plot_perfs(perfs):
         plt.close()
 
 
-### Load model
+# ## Load model
 
 # In[ ]:
 
@@ -712,7 +717,7 @@ def dump_model(net, filename):
     logger.info('Model dumped')
 
 
-### Load old job for continuation or start new
+# ## Load old job for continuation or start new
 
 # In[ ]:
 
@@ -753,7 +758,7 @@ else:
     completed_epochs = 0
 
 
-### Train
+# ## Train
 
 # In[ ]:
 
@@ -806,7 +811,7 @@ for epoch, completed_epochs in enumerate(range(
 logger.info('Training complete')
 
 
-### Performance metrics
+# ## Performance metrics
 
 # In[ ]:
 
@@ -825,7 +830,7 @@ logger.info('Plotting performance')
 plot_perfs(perfs)
 
 
-### Analyse errors in correlation detection
+# ## Analyse errors in correlation detection
 
 # In[ ]:
 
@@ -959,7 +964,7 @@ logger.debug('Complete error table, latex:\n'+errors.to_latex())
 errors.to_csv(out_prefix + 'errors.csv')
 
 
-## Clustering
+# # Clustering
 
 # In[ ]:
 
@@ -1017,7 +1022,7 @@ for cut in y.keys():
     logger.info("Breakdown of {} labels:\n".format(cut) +  break_down_data(y[cut]))
 
 
-### Cluster train data
+# ## Cluster train data
 
 # In[ ]:
 
@@ -1374,7 +1379,7 @@ def cm_inc_inc(y, y_pred_inc):
     return cm_inc_inc
 
 
-### Clustering - test data
+# ## Clustering - test data
 
 # In[ ]:
 
@@ -1458,7 +1463,7 @@ logger.info('Testing completed, exiting')
 sys.exit(0)
 
 
-### Analysing results
+# ## Analysing results
 
 # In[ ]:
 
