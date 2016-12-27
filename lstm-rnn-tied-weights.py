@@ -156,7 +156,6 @@ env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
 env['EPOCHS'] = int(os.environ.get('EPOCHS', 10))
 env['VAL_CUT'] = int(os.environ.get('VAL_CUT', -1))
-assert (0 <= env['VAL_CUT']) and (env['VAL_CUT'] <= 9), "Invalid cross validation cut: {}".format(env['VAL_CUT'])
 
 # Neural network
 env['NN_UNITS'] = [int(el) for el in os.environ.get('NN_UNITS', '10').split(',')]
@@ -192,9 +191,12 @@ if env['OLD_JOB']:
         'BATCH_SIZE',
         'NN_UNITS',
         'NN_LEARNING_RATE',
+        'VAL_CUT',
     ]
     for s in statics:
         env[s] = env_old[s]
+
+assert (0 <= env['VAL_CUT']) and (env['VAL_CUT'] <= 9), "Invalid cross validation cut: {}".format(env['VAL_CUT'])
 
 logger.info("Starting.")
 logger.info("env: " + str(env))
