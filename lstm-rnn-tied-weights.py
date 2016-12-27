@@ -1251,7 +1251,11 @@ for cut in cuts:
             
             logger.info(
                 "Performance on {} cut with (eps, min_samples)=({:1.0e},{:>2d}): n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
-                    cut, eps, min_samples, n_clusters[cut][i,j], homogenity[cut][i,j], f1[cut][i,j], noise[cut][i,j],
+                    cut, eps, min_samples, 
+                    m['n_clusters'][cut][i,j],
+                    m['homogenity'][cut][i,j],
+                    m['f1'][cut][i,j],
+                    m['outliers'][cut][i,j],
                 )
             )
         
