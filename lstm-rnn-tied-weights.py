@@ -114,7 +114,7 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
-runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-")
+runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 if os.environ.get('SLURM_ARRAY_TASK_ID', False):
     runid += '-slurm-{}_{}'.format(
         os.environ['SLURM_ARRAY_JOB_ID'],
@@ -123,7 +123,7 @@ if os.environ.get('SLURM_ARRAY_TASK_ID', False):
 elif os.environ.get('SLURM_JOB_ID', False):
     runid += '-slurm-' + os.environ['SLURM_JOB_ID']
 else:
-     runid += socket.gethostname()
+     runid += '-' + socket.gethostname()
 out_dir = OUTPUT + '/' + runid
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
@@ -1022,10 +1022,11 @@ for cut in y.keys():
     logger.info("Breakdown of {} labels:\n".format(cut) +  break_down_data(y[cut]))
 
 
-# ## Cluster train data
+# ## Clustering
 
 # In[ ]:
 
+import sklearn
 from sklearn.cluster import DBSCAN
 from sklearn import metrics
 
@@ -1124,6 +1125,10 @@ def false_alert_rate_outliers_score(y, y_pred):
     idx_outliers = y_pred == -1
     return (y[idx_outliers] == -1).mean()
 
+def false_alert_rate_clusters_score(y, y_pred):
+    idx_clusters = y_pred != -1
+    return (y[idx_clusters] == -1).mean()
+
 def arf_score(y, y_pred):
     return len(y) / len(set(y_pred))
 
@@ -1151,46 +1156,97 @@ def imr_score(y, y_pred):
     inc_miss_prob = inc_miss_prob[inc_miss_prob.index != -1] # Don't care about missing the noise pseudo-incident
     return inc_miss_prob.sum() / df_clustering[df_clustering.inc_true != -1].inc_true.unique().shape[0]
 
+def cm_inc_clust(y, y_pred):
+    cm_inc_clust = pd.DataFrame(
+        metrics.confusion_matrix(y, y_pred),
+        index=sorted(set.union(set(y), set(y_pred))),
+        columns=sorted(set.union(set(y), set(y_pred))),
+    )
+    # drop dummy row for non-existing incident IDs
+    assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
+    cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
+
+    # drop dummy collumns for non-existing cluster IDs
+    assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
+    cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
+
+    cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
+    cm_inc_clust.rename(columns={-1: 'noise'}, inplace=True)
+    return cm_inc_clust
+
+def cm_inc_inc(y, y_pred_inc):
+    cm_inc_inc = pd.DataFrame(
+        metrics.confusion_matrix(y, y_pred_inc),
+        index=sorted(set.union(set(y), set(y_pred_inc))),
+        columns=sorted(set.union(set(y), set(y_pred_inc))),
+    )
+
+    cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
+    cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
+    return cm_inc_inc
+
+def per_class_metrics(y, y_pred_inc):
+    d = dict(
+        zip(
+            ['precission', 'recall', 'f1', 'support'],
+            metrics.precision_recall_fscore_support(y, y_pred_inc)
+        )
+    )
+    cmat = metrics.confusion_matrix(y, y_pred_inc)
+    d['accuracy'] = cmat.diagonal()/cmat.sum(axis=1)
+    d['labels'] = sklearn.utils.multiclass.unique_labels(y, y_pred_inc)
+    return d
+
 
 # In[ ]:
 
 # calculating metrics
-
-# clustering
-n_clusters = ParamSpaceMatrices(dtype=int)
-homogenity = ParamSpaceMatrices()
-noise = ParamSpaceMatrices(dtype=int)
-noise_false_rate = ParamSpaceMatrices()
-# classification, general
-accuracy = ParamSpaceMatrices()
-precision = ParamSpaceMatrices()
-recall = ParamSpaceMatrices()
-f1 = ParamSpaceMatrices()
-# correlating and filtering metrics
-arf = ParamSpaceMatrices()
-narf = ParamSpaceMatrices()
-imr = ParamSpaceMatrices()
-faro = ParamSpaceMatrices()
+m = {
+    # clustering
+    'n_clusters': ParamSpaceMatrices(dtype=int),
+    'homogenity': ParamSpaceMatrices(),
+    'outliers': ParamSpaceMatrices(dtype=int),
+    # classification, general
+    'accuracy': ParamSpaceMatrices(),
+    'precision': ParamSpaceMatrices(),
+    'recall': ParamSpaceMatrices(),
+    'f1': ParamSpaceMatrices(),
+    'per_class': ParamSpaceMatrices(dtype=object),
+    # correlating and filtering metrics
+    'arf': ParamSpaceMatrices(),
+    'narf': ParamSpaceMatrices(),
+    'imr': ParamSpaceMatrices(),
+    'faro': ParamSpaceMatrices(),
+    'farc': ParamSpaceMatrices(),
+    # confusion matrices
+    'cm_inc_clust': ParamSpaceMatrices(dtype=object),
+    'cm_inc_inc': ParamSpaceMatrices(dtype=object),
+}
 
 for cut in cuts:
     for i, eps in enumerate(epss):
         for j, min_samples in enumerate(min_sampless):
             # clustering metrics
             # Number of clusters in labels, ignoring noise if present.
-            n_clusters[cut][i,j] = len(set(y_pred[cut][i,j])) - (1 if -1 in y_pred[cut][i,j] else 0)
-            noise[cut][i,j] = sum(y_pred[cut][i,j] == -1)
-            homogenity[cut][i,j] = metrics.homogeneity_score(y[cut], y_pred[cut][i,j])
+            m['n_clusters'][cut][i,j] = len(set(y_pred[cut][i,j])) - (1 if -1 in y_pred[cut][i,j] else 0)
+            m['outliers'][cut][i,j] = sum(y_pred[cut][i,j] == -1)
+            m['homogenity'][cut][i,j] = metrics.homogeneity_score(y[cut], y_pred[cut][i,j])
             # classification metrics
-            accuracy[cut][i,j] = metrics.accuracy_score(y[cut], y_pred_inc[cut][i,j])
-            precision[cut][i,j] = metrics.precision_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
-            recall[cut][i,j] = metrics.recall_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
-            f1[cut][i,j] = metrics.f1_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            m['accuracy'][cut][i,j] = metrics.accuracy_score(y[cut], y_pred_inc[cut][i,j])
+            m['precision'][cut][i,j] = metrics.precision_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            m['recall'][cut][i,j] = metrics.recall_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            m['f1'][cut][i,j] = metrics.f1_score(y[cut], y_pred_inc[cut][i,j], average='weighted')
+            m['per_class'][cut][i,j] = per_class_metrics(y[cut], y_pred_inc[cut][i,j])
             # correlating and filtering
-            arf[cut][i,j] = arf_score(y[cut], y_pred[cut][i,j])
-            narf[cut][i,j] = narf_score(y[cut], y_pred[cut][i,j])
-            imr[cut][i,j] = imr_score(y[cut], y_pred[cut][i,j])
-            faro[cut][i,j] = false_alert_rate_outliers_score(y[cut], y_pred[cut][i,j])
-
+            m['arf'][cut][i,j] = arf_score(y[cut], y_pred[cut][i,j])
+            m['narf'][cut][i,j] = narf_score(y[cut], y_pred[cut][i,j])
+            m['imr'][cut][i,j] = imr_score(y[cut], y_pred[cut][i,j])
+            m['faro'][cut][i,j] = false_alert_rate_outliers_score(y[cut], y_pred[cut][i,j])
+            m['farc'][cut][i,j] = false_alert_rate_clusters_score(y[cut], y_pred[cut][i,j])
+            # confusion matrices
+            m['cm_inc_clust'][cut][i,j] = cm_inc_clust(y[cut], y_pred[cut][i,j])
+            m['cm_inc_inc'][cut][i,j] = cm_inc_inc(y[cut], y_pred[cut][i,j])
+            
             logger.info(
                 "Performance on {} cut with (eps, min_samples)=({:1.0e},{:>2d}): n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
                     cut, eps, min_samples, n_clusters[cut][i,j], homogenity[cut][i,j], f1[cut][i,j], noise[cut][i,j],
@@ -1198,6 +1254,15 @@ for cut in cuts:
             )
         
 
+
+# In[ ]:
+
+import pickle
+with open(out_prefix + 'metrics.pickle', 'w') as f:
+    pickle.dump(m, f)
+
+
+# ### Plotting
 
 # In[ ]:
 
@@ -1345,38 +1410,6 @@ for label, values, fmt in [
 
 logger.info('One fold of cross validation completed')
 sys.exit(0)
-
-
-# In[ ]:
-
-def cm_inc_clust(y, y_pred):
-    cm_inc_clust = pd.DataFrame(
-        metrics.confusion_matrix(y, y_pred),
-        index=sorted(set.union(set(y), set(y_pred))),
-        columns=sorted(set.union(set(y), set(y_pred))),
-    )
-    # drop dummy row for non-existing incident IDs
-    assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
-    cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
-
-    # drop dummy collumns for non-existing cluster IDs
-    assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
-    cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
-
-    cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
-    cm_inc_clust.rename(columns={-1: 'noise'}, inplace=True)
-    return cm_inc_clust
-
-def cm_inc_inc(y, y_pred_inc):
-    cm_inc_inc = pd.DataFrame(
-        metrics.confusion_matrix(y, y_pred_inc),
-        index=sorted(set.union(set(y), set(y_pred_inc))),
-        columns=sorted(set.union(set(y), set(y_pred_inc))),
-    )
-
-    cm_inc_inc.rename(index={-1: 'benign'}, inplace=True)
-    cm_inc_inc.rename(columns={-1: 'benign'}, inplace=True)
-    return cm_inc_inc
 
 
 # ## Clustering - test data
