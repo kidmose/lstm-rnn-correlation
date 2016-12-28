@@ -1247,7 +1247,7 @@ for cut in cuts:
             m['farc'][cut][i,j] = false_alert_rate_clusters_score(y[cut], y_pred[cut][i,j])
             # confusion matrices
             m['cm_inc_clust'][cut][i,j] = cm_inc_clust(y[cut], y_pred[cut][i,j])
-            m['cm_inc_inc'][cut][i,j] = cm_inc_inc(y[cut], y_pred[cut][i,j])
+            m['cm_inc_inc'][cut][i,j] = cm_inc_inc(y[cut], y_pred_inc[cut][i,j])
             
             logger.info(
                 "Performance on {} cut with (eps, min_samples)=({:1.0e},{:>2d}): n_clusters={:>3d}, homogenity={:1.3f}, f1={:1.3f}, noise={:>3d}".format(
