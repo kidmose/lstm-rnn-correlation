@@ -1350,9 +1350,9 @@ def param_plot_save(filename):
 # In[ ]:
 
 for label, values, fmt in [
-    ('Cluster count', n_clusters, '{}'),
-    ('Cluster homogenity', homogenity, '{:.2f}'),
-    ('Noise (Clustering outliers)', noise, '{}'),
+    ('Cluster count', m['n_clusters'], '{}'),
+    ('Cluster homogenity', m['homogenity'], '{:.2f}'),
+    ('Outliers', m['outliers'], '{}'),
 ]:
     for cut in cuts:
         param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
@@ -1371,10 +1371,10 @@ for label, values, fmt in [
 # In[ ]:
 
 for label, values, fmt in [
-    ('Incident prediction accuracy', accuracy, '{:.2f}'),
-    ('Incident prediction precision', precision,  '{:.2f}'),
-    ('Incident prediction recall', recall, '{:.2f}'),
-    ('Incident prediction F1 score', f1, '{:.2f}'),
+    ('Incident prediction accuracy', m['accuracy'], '{:.2f}'),
+    ('Incident prediction precision', m['precision'],  '{:.2f}'),
+    ('Incident prediction recall', m['recall'], '{:.2f}'),
+    ('Incident prediction F1 score', m['f1'], '{:.2f}'),
 ]:
     for cut in ['validation']: # training evaluated on true labels for clustering is of little use
         param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
@@ -1393,10 +1393,10 @@ for label, values, fmt in [
 # In[ ]:
 
 for label, values, fmt in [
-    ('Alert Reduction Factor', arf, '{:.2f}'),
-    ('Normalised Alert Reduction Factor', narf, '{:.2e}'),
-    ('Incident Miss Rate', imr, '{:.2e}'),
-    ('False alerts rate among outliers', faro, '{:.2f}'),
+    ('Alert Reduction Factor', m['arf'], '{:.2f}'),
+    ('Normalised Alert Reduction Factor', m['narf'], '{:.2e}'),
+    ('Incident Miss Rate', m['imr'], '{:.2e}'),
+    ('False alerts rate among outliers', m['faro'], '{:.2f}'),
 ]:
     for cut in cuts:
         param_plot_prepare('{} by DBSCAN parameters ({} alerts)'.format(label, cut))
