@@ -489,6 +489,32 @@ assert (data['alert'].map(len) == data['mask'].map(sum)).all(), "Sum of mask is 
 assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).all(),     "Last non-zero index of mask is not equal to length of alert"
 
 
+# In[ ]:
+
+def alert_mask_iter(data, batch_size):
+    ii = 0 # minibatch counter
+    assert len(data) >= batch_size,         "{} samples is not enough to produce a minibatch of {} samples"        .format(len(data), batch_size)
+    logger.debug('Expect %d minibatches' % (len(data)//batch_size))
+    while len(data) - ii * batch_size >= batch_size:
+        with Timer('Minibatch{}'.format(ii)):
+            begin = ii * batch_size
+            ii += 1
+            end = ii * batch_size
+            logger.debug("Producing minibatch no. %d" % ii)
+            batch = data.iloc[begin:end]
+            inputs = np.vstack(batch['encoded_alert'].as_matrix())
+            mask = np.vstack(batch['mask'].as_matrix())
+            yield inputs, mask
+
+for mbatch_size in [100, 300, 1000, 3000, 4316]:
+    for mbatch_alerts, mbatch_masks in alert_mask_iter(data, mbatch_size):
+        start_mbatch = datetime.datetime.now()
+        _ = alert_to_vector(mbatch_alerts, mbatch_masks)
+        speed = mbatch_alerts.shape[0]/(datetime.datetime.now()-start_mbatch).total_seconds()
+        logger.info('Minibatch (Mapping, mbatch_size={}) completed. speed={:.3f} [alerts/sec]'.format(mbatch_size, speed))
+    
+
+
 # ## Cut data, pairing
 
 # In[ ]:
