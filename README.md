@@ -35,11 +35,14 @@ etc). We encourage such an environment for your first installation.
 Furthermore we have used and encourage the use of `virtualenv`, for
 isolation and the ability to easily roll back.
 
+    virtualenv --system-site-packages -p python2.7 venv
+
 Dependencies are installed with:
 
+    pip install --upgrade setuptools pip # Old version of pip causes errors
     pip install -r requirements.txt
 
-Ipython notebook, or jupyter, is used for development and small test
+Jupyter, is used for development and small test
 runs:
 
     jupyter notebook
