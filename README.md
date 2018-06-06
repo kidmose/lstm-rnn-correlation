@@ -61,17 +61,29 @@ platforms, we refer to our scripts for the same:
 
 We have used the following workflow:
 
- 1. Retrieve data. Refer to `data_cfg.py` for public data on bot
-    malware activity (Note: We downloaded `pcap`s and applied the
-    Snort IDS as per [^kidmose2017]).
- 2. Clean up data and merge into a single set. Refer to
-    `preprocessing.ipynb`.
- 3. Train, validate and test the method. Refer to
+ 1. Prepare data sets. Refer to folders
+    `preprocessing/{mcfp_recorded_merge}/` and the below description
+    of data sets.
+ 2. Train, validate and test the method. Refer to
     `lstm-rnn-tied-weights.ipynb`
- 4. Compute and format results for presentation. Refer to
+ 3. Compute and format results for presentation. Refer to
     `results.ipynb`.
 
-## References
+## Data sets ##
+
+The data sets used in our work with this approach are the following:
+
+### Malware Capture Facility merged with private benign traffic ###
+
+ 1. Retrieve data. Refer to `preprocessing/mcfp_recorded_merge/data_cfg.py` for
+    public data on bot malware activity (Note: We downloaded `pcap`s
+    and applied the Snort IDS as per [^kidmose2017]).
+ 2. Record private traffic, validate absence of malicious activity,
+    apply the Snort IDS, as per [^kidmose2017].
+ 3. Clean up data and merge into a single set. Refer to
+    `preprocessing/mcfp_recorded_merge/preprocessing.ipynb`.
+
+## References ##
 
 [^kidmose2017]: Egon Kidmose, Matija Stevanovic, Søren Brandbyge and
   Jens M. Pedersen, Automating the discovery of correlated and false
