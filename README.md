@@ -86,6 +86,10 @@ The data sets used in our work with this approach are the following:
  3. Clean up data and merge into a single set. Refer to
     `preprocessing/mcfp_recorded_merge/preprocessing.ipynb`.
 
+### CIC-IDS-2017 ###
+
+http://www.unb.ca/cic/datasets/ids-2017.html
+
 ## References ##
 
 [^kidmose2017]: Egon Kidmose, Matija Stevanovic, Søren Brandbyge and
