@@ -88,7 +88,21 @@ The data sets used in our work with this approach are the following:
 
 ### CIC-IDS-2017 ###
 
-http://www.unb.ca/cic/datasets/ids-2017.html
+Homepage for the data set:
+http://www.unb.ca/cic/datasets/ids-2017.html.  Private
+links/credentials to the data have been provided to us uppon request
+by e-mail.
+
+**IMPORTANT - Data inconsistency:** We observed a noteable
+inconsistency between the data description on the homepage and the
+labels of the flows: `Friday-WorkingHours-Morning.pcap_ISCX.csv`
+contains flows labelled as botnet and timestamped from ~10:00 a.m. to
+~1:00 p.m., while the description states the botnet was active from
+10:02 a.m. – 11:02 a.m..
+
+ 1. Run pcaps through snort, concatenate the log files.
+ 2. Clean CSV with lablled flows. See `preprocessing/cic-ids-2017/clean-flows.ipynb`
+ 3. Label alerts by matching to labelled flows. **TODO**.
 
 ## References ##
 
