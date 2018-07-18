@@ -35,11 +35,14 @@ etc). We encourage such an environment for your first installation.
 Furthermore we have used and encourage the use of `virtualenv`, for
 isolation and the ability to easily roll back.
 
+    virtualenv --system-site-packages -p python2.7 venv
+
 Dependencies are installed with:
 
+    pip install --upgrade setuptools pip # Old version of pip causes errors
     pip install -r requirements.txt
 
-Ipython notebook, or jupyter, is used for development and small test
+Jupyter, is used for development and small test
 runs:
 
     jupyter notebook
@@ -61,17 +64,47 @@ platforms, we refer to our scripts for the same:
 
 We have used the following workflow:
 
- 1. Retrieve data. Refer to `data_cfg.py` for public data on bot
-    malware activity (Note: We downloaded `pcap`s and applied the
-    Snort IDS as per [^kidmose2017]).
- 2. Clean up data and merge into a single set. Refer to
-    `preprocessing.ipynb`.
- 3. Train, validate and test the method. Refer to
+ 1. Prepare data sets. Refer to folders
+    `preprocessing/{mcfp_recorded_merge}/` and the below description
+    of data sets.
+ 2. Train, validate and test the method. Refer to
     `lstm-rnn-tied-weights.ipynb`
- 4. Compute and format results for presentation. Refer to
+ 3. Compute and format results for presentation. Refer to
     `results.ipynb`.
 
-## References
+## Data sets ##
+
+The data sets used in our work with this approach are the following:
+
+### Malware Capture Facility merged with private benign traffic ###
+
+ 1. Retrieve data. Refer to `preprocessing/mcfp_recorded_merge/data_cfg.py` for
+    public data on bot malware activity (Note: We downloaded `pcap`s
+    and applied the Snort IDS as per [^kidmose2017]).
+ 2. Record private traffic, validate absence of malicious activity,
+    apply the Snort IDS, as per [^kidmose2017].
+ 3. Clean up data and merge into a single set. Refer to
+    `preprocessing/mcfp_recorded_merge/preprocessing.ipynb`.
+
+### CIC-IDS-2017 ###
+
+Homepage for the data set:
+http://www.unb.ca/cic/datasets/ids-2017.html.  Private
+links/credentials to the data have been provided to us uppon request
+by e-mail.
+
+**IMPORTANT - Data inconsistency:** We observed a noteable
+inconsistency between the data description on the homepage and the
+labels of the flows: `Friday-WorkingHours-Morning.pcap_ISCX.csv`
+contains flows labelled as botnet and timestamped from ~10:00 a.m. to
+~1:00 p.m., while the description states the botnet was active from
+10:02 a.m. – 11:02 a.m..
+
+ 1. Run pcaps through snort, concatenate the log files.
+ 2. Clean CSV with lablled flows. See `preprocessing/cic-ids-2017/clean-flows.ipynb`
+ 3. Label alerts by matching to labelled flows. **TODO**.
+
+## References ##
 
 [^kidmose2017]: Egon Kidmose, Matija Stevanovic, Søren Brandbyge and
   Jens M. Pedersen, Automating the discovery of correlated and false
