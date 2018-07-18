@@ -61,3 +61,5 @@ ipython_notebook_config.py
 env*
 output
 data
+.ipynb_checkpoints
+venv

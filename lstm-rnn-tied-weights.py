@@ -61,6 +61,7 @@
 
 # In[ ]:
 
+
 from __future__ import print_function
 from __future__ import division
 
@@ -112,6 +113,7 @@ from lstm_rnn_tied_weights import uniquify_victim, extract_prio, get_discard_by_
 
 # In[ ]:
 
+
 logger = lstm_rnn_tied_weights.logger
 OUTPUT = 'output'
 runid = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -148,9 +150,14 @@ logger.info('Output, including logs, are going to: {}'.format(out_dir))
 
 # In[ ]:
 
+
 env = dict()
 
 # Data control
+env['CSVIN'] = os.environ.get('CSVIN', None)
+if env['CSVIN'] is None:
+    logger.critical("Cannot run without a CSV input")
+    sys.exit(-1)
 env['MAX_PAIRS'] = int(os.environ.get('MAX_PAIRS', 0))
 env['BATCH_SIZE'] = int(os.environ.get('BATCH_SIZE', 10000))
 env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
@@ -187,6 +194,7 @@ if env['OLD_JOB']:
         env_old = json.load(f)
     logger.info('Loaded old env')
     statics = [
+        'CSVIN',
         'MAX_PAIRS',
         'BATCH_SIZE',
         'NN_UNITS',
@@ -210,6 +218,7 @@ with open(out_prefix + 'env.json', 'w') as f:
 
 # In[ ]:
 
+
 seed = env['RAND_SEED']
 def rndseed():
     global seed
@@ -218,6 +227,7 @@ def rndseed():
 
 
 # In[ ]:
+
 
 class Timer(object):
     def __init__(self, name='', log=logger.debug):
@@ -239,6 +249,7 @@ class Timer(object):
 
 # In[ ]:
 
+
 # Data for unit testing
 X_unit = ['abcdef', 'abcdef', 'qwerty']
 X_unit = [[ord(c) for c in w] for w in X_unit]
@@ -251,6 +262,7 @@ logger.debug(mask_unit)
 
 # In[ ]:
 
+
 # Dimensions
 n_alerts = None
 l_alerts = None
@@ -258,6 +270,7 @@ n_alphabet = 2**7 # All ASCII chars
 
 
 # In[ ]:
+
 
 # Symbolic variables
 input_var = T.imatrix('inputs')
@@ -271,6 +284,7 @@ target_var = T.vector('targets')
 
 # In[ ]:
 
+
 l_in = InputLayer(shape=(n_alerts, l_alerts), input_var=input_var, name='INPUT-LAYER')
 
 l_in_output_var = get_output(l_in, inputs={l_in: input_var})
@@ -281,6 +295,7 @@ assert (pred_unit == X_unit).all(), "Unexpected output"
 
 
 # In[ ]:
+
 
 l_emb = EmbeddingLayer(
     l_in, n_alphabet, n_alphabet,
@@ -299,6 +314,7 @@ assert np.all(pred_unit.shape == (n_alerts_unit, l_alerts_unit, n_alphabet ))
 
 # In[ ]:
 
+
 l_mask = InputLayer(shape=(n_alerts, l_alerts), input_var=mask_var, name='MASK-INPUT-LAYER')
 
 l_mask_output_var = get_output(l_mask, inputs={l_mask: mask_var})
@@ -309,6 +325,7 @@ assert (pred_unit == mask_unit).all(), "Unexpected output"
 
 
 # In[ ]:
+
 
 l_lstm = l_emb
 for i, num_units in enumerate(env['NN_UNITS']):
@@ -334,6 +351,7 @@ assert np.all(pred_unit[0,1] != pred_unit[1,1]), "Current must make a difference
 
 # In[ ]:
 
+
 l_slice = SliceLayer(l_lstm, indices=-1, axis=1, name="SLICE-LAYER") # Only last timestep
 
 l_slice_output_var = get_output(l_slice, inputs={l_in: input_var, l_mask: mask_var})
@@ -352,6 +370,7 @@ logger.info('First line built')
 
 # In[ ]:
 
+
 l_in2 = InputLayer(shape=l_in.shape, input_var=input_var2, name=l_in.name+'2')
 l_mask2 = InputLayer(shape=l_mask.shape, input_var=mask_var2, name=l_mask.name+'2')
 net2 = lstm_rnn_tied_weights.clone(net, l_in2, l_mask2)
@@ -366,6 +385,7 @@ logger.info('Second line built')
 # ### Merge lines
 
 # In[ ]:
+
 
 l_cos = CosineSimilarityLayer(net, net2, name="COSINE-SIMILARITY-LAYER")
 
@@ -386,6 +406,7 @@ pred_unit = l_cos_output_var.eval(({
 
 
 # In[ ]:
+
 
 l_sig = NonlinearityLayer(l_cos, nonlinearity=sigmoid, name="SIGMOID-LAYER")
 
@@ -409,6 +430,7 @@ cos_net = l_sig
 
 
 # In[ ]:
+
 
 with Timer('Compiling theano', logger.info):
     # Training Procedure
@@ -436,8 +458,9 @@ with Timer('Compiling theano', logger.info):
 
 # In[ ]:
 
+
 with Timer('Load data'):
-    data = pd.read_csv('data/own-recordings/alerts-merged-cleaned-strat50-cross-val.log.1465471791')
+    data = pd.read_csv(env['CSVIN'])
 
 # Test data
 test_incidents = np.array(['1', '2', 'benign']*2)
@@ -461,6 +484,7 @@ test_data = pd.concat([test_data1, test_data2]).reset_index(drop=True)
 
 # In[ ]:
 
+
 max_len = data['alert'].apply(len).max()
 
 def encode_alert(alert):
@@ -477,6 +501,7 @@ test_alert = data['alert'].iloc[0]
 test_encoded_alert = encode_alert(test_alert)
 test_mask = build_mask(test_encoded_alert)
 assert ''.join(map(chr,test_encoded_alert[test_mask.astype(bool)])) == test_alert,    "First alert cannot be encoded and decoded: %s" % test_alert
+assert data[data.incident != 'benign'].incident.map(int).all(), "Invalid incident IDs - must be int"
 
 with Timer('Encode alerts'):
     data['encoded_alert'] = data['alert'].apply(encode_alert)
@@ -490,6 +515,7 @@ assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).al
 
 
 # In[ ]:
+
 
 def alert_mask_iter(data, batch_size):
     ii = 0 # minibatch counter
@@ -518,6 +544,7 @@ for mbatch_size in [100, 300, 1000, 3000, 4316]:
 # ## Cut data, pairing
 
 # In[ ]:
+
 
 def get_pairs(data):
     KEY = 'DUMMY_MERGE_KEY'
@@ -555,6 +582,7 @@ def shuffle(pairs):
 
 # In[ ]:
 
+
 alerts_train = data[data.cut != env['VAL_CUT']]
 alerts_val = data[data.cut == env['VAL_CUT']]
 
@@ -564,6 +592,7 @@ with Timer('Build pairs'):
 
 
 # In[ ]:
+
 
 def iterate_minibatches(pairs, batch_size, max_pairs=0, include_incidents=False):
     ii = 0 # minibatch counter
@@ -595,6 +624,7 @@ def iterate_minibatches(pairs, batch_size, max_pairs=0, include_incidents=False)
 # ## Plot Empirical Distribution Functions for model output, by ground truth for correlation
 
 # In[ ]:
+
 
 pairs_train_edf_cor = pairs_train[pairs_train['cor']==True].head(1000)
 pairs_train_edf_uncor = pairs_train[pairs_train['cor']==False].head(1000)
@@ -658,6 +688,7 @@ def plot_hists(hists):
 # ## Performance evaluation
 
 # In[ ]:
+
 
 def perf_eval():
     logger.debug('Starting performance evaluation on training data')
@@ -725,6 +756,7 @@ def plot_perfs(perfs):
 
 # In[ ]:
 
+
 def load_model(net, filename):
     logger.info('Loading model from {}'.format(filename))
     with open(filename) as f:
@@ -748,6 +780,7 @@ def dump_model(net, filename):
 # ## Load old job for continuation or start new
 
 # In[ ]:
+
 
 # quick'n'dirty numpy<->json encoding/decoding
 def json_encode_hists(d):
@@ -789,6 +822,7 @@ else:
 # ## Train
 
 # In[ ]:
+
 
 logger.info('Pre-training evaluation (on random model weights/loaded model as per above)')
 logger.debug("Performance evaluation before training: {}".format(json.dumps(perfs[completed_epochs])))
@@ -843,6 +877,7 @@ logger.info('Training complete')
 
 # In[ ]:
 
+
 logger.info('Dumping histograms')
 with open(out_prefix + 'histograms.json', 'w') as f:
     json.dump(json_encode_hists(hists), f)
@@ -861,6 +896,7 @@ plot_perfs(perfs)
 # ## Analyse errors in correlation detection
 
 # In[ ]:
+
 
 # count errors
 error_dict = dict()
@@ -911,6 +947,7 @@ errors['FNR'] = errors['FN'].astype(float) / (errors['TP'] + errors['FN'])
 
 # In[ ]:
 
+
 logger.debug('Errors table for latex: ' + errors[cols].to_latex())
 logger.info('Errors table:\n'+ errors[cols].to_string())
 errors[cols]
@@ -918,12 +955,6 @@ errors[cols]
 
 # In[ ]:
 
-logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
-logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
-errors[cols_norm]
-
-
-# In[ ]:
 
 logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
 logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
@@ -931,6 +962,15 @@ errors[cols_norm]
 
 
 # In[ ]:
+
+
+logger.debug('Normalised errors table for latex: ' + errors[cols_norm].to_latex())
+logger.info('Normalised errors table:\n'+ errors[cols_norm].to_string())
+errors[cols_norm]
+
+
+# In[ ]:
+
 
 # Constants for plotting
 index_x = np.arange(len(labels))
@@ -939,6 +979,7 @@ colors = ['g', 'b', 'r', 'y']
 
 
 # In[ ]:
+
 
 fig, ax = plt.subplots()
 for x, (metric, color) in enumerate(zip(cols_norm, colors)):
@@ -964,6 +1005,7 @@ plt.savefig(out_prefix+'detection_norm.pdf', bbox_inches='tight')
 
 # In[ ]:
 
+
 fig, ax = plt.subplots()
 for x, (metric, color) in enumerate(zip(cols, colors)):
     y = errors[metric].iloc[:-1] # skip total
@@ -987,6 +1029,7 @@ plt.savefig(out_prefix+'detection_notnorm.pdf', bbox_inches='tight')
 
 # In[ ]:
 
+
 logger.info('Complete error table:\n'+errors.to_string())
 logger.debug('Complete error table, latex:\n'+errors.to_latex())
 errors.to_csv(out_prefix + 'errors.csv')
@@ -995,6 +1038,7 @@ errors.to_csv(out_prefix + 'errors.csv')
 # # Clustering
 
 # In[ ]:
+
 
 def _get_alert_batch(data, max_samples=0):
     """
@@ -1026,6 +1070,7 @@ def precompute_distance_matrix(X):
 
 # In[ ]:
 
+
 logger.info('Getting alerts for clustering')
 clust_alerts = {
     'train': _get_alert_batch(alerts_train),
@@ -1046,6 +1091,7 @@ for (cut, v) in clust_alerts.items():
 
 # In[ ]:
 
+
 for cut in y.keys():
     logger.info("Breakdown of {} labels:\n".format(cut) +  break_down_data(y[cut]))
 
@@ -1053,6 +1099,7 @@ for cut in y.keys():
 # ## Clustering
 
 # In[ ]:
+
 
 import sklearn
 from sklearn.cluster import DBSCAN
@@ -1095,6 +1142,7 @@ def dbscan_predict(dbscan_model, X_new, metric=sp.spatial.distance.cosine):
 
 # In[ ]:
 
+
 logger.info("Iterating clustering algorithm parameters")
 epss = np.array([0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1])
 min_sampless = np.array([1, 3, 10, 30])
@@ -1113,6 +1161,7 @@ def ParamSpaceMatrices(dtype=None):
 
 # In[ ]:
 
+
 # Cluster and build mapper
 for i, eps in enumerate(epss):
     for j, min_samples in enumerate(min_sampless):
@@ -1126,6 +1175,7 @@ for i, eps in enumerate(epss):
 
 
 # In[ ]:
+
 
 # predict 
 y_pred = ParamSpaceMatrices(dtype=object)
@@ -1148,6 +1198,7 @@ for cut in cuts:
 
 
 # In[ ]:
+
 
 def false_alert_rate_outliers_score(y, y_pred):
     idx_outliers = y_pred == -1
@@ -1228,6 +1279,7 @@ def per_class_metrics(y, y_pred_inc):
 
 # In[ ]:
 
+
 # calculating metrics
 m = {
     # clustering
@@ -1289,6 +1341,7 @@ for cut in cuts:
 
 # In[ ]:
 
+
 import pickle
 with open(out_prefix + 'metrics.pickle', 'w') as f:
     pickle.dump(m, f)
@@ -1297,6 +1350,7 @@ with open(out_prefix + 'metrics.pickle', 'w') as f:
 # ### Plotting
 
 # In[ ]:
+
 
 def param_plot_prepare(
     title,
@@ -1375,6 +1429,7 @@ def param_plot_save(filename):
 
 # In[ ]:
 
+
 for label, values, fmt in [
     ('Cluster count', m['n_clusters'], '{}'),
     ('Cluster homogenity', m['homogenity'], '{:.2f}'),
@@ -1395,6 +1450,7 @@ for label, values, fmt in [
 
 
 # In[ ]:
+
 
 for label, values, fmt in [
     ('Incident prediction accuracy', m['accuracy'], '{:.2f}'),
@@ -1418,6 +1474,7 @@ for label, values, fmt in [
 
 # In[ ]:
 
+
 for label, values, fmt in [
     ('Alert Reduction Factor', m['arf'], '{:.2f}'),
     ('Normalised Alert Reduction Factor', m['narf'], '{:.2e}'),
@@ -1440,6 +1497,7 @@ for label, values, fmt in [
 
 # In[ ]:
 
+
 logger.info('One fold of cross validation completed')
 sys.exit(0)
 
@@ -1447,6 +1505,7 @@ sys.exit(0)
 # ## Clustering - test data
 
 # In[ ]:
+
 
 if env['TEST_MS'] and env['TEST_EPS']:
     logger.info('Continuing to use test data (eps={}, min_samples={})'.format(
@@ -1458,6 +1517,7 @@ else:
 
 
 # In[ ]:
+
 
 eps = env['TEST_EPS']
 min_samples = env['TEST_MS']
@@ -1476,10 +1536,12 @@ y_pred_inc = np.array([mapper[i][j][el] for el in y_pred])
 
 # In[ ]:
 
+
 sorted(set.union(set(y), set(y_pred)))
 
 
 # In[ ]:
+
 
 logger.info("Incident (i) to cluster (j) \"confusion matrix\":\n" + cm_inc_clust.to_string())
 logger.debug("Incident (i) to cluster (j) \"confusion matrix\" in latex:\n" + cm_inc_clust.to_latex())
@@ -1488,12 +1550,14 @@ cm_inc_clust
 
 # In[ ]:
 
+
 logger.info("Incident (i) to Incident (j) confusion matrix:\n" + cm_inc_inc.to_string())
 logger.debug("Incident (i) to Incident (j) confusion matrix in latex:\n" + cm_inc_inc.to_latex())
 cm_inc_inc
 
 
 # In[ ]:
+
 
 cm = metrics.confusion_matrix(y, y_pred_inc)
 logger.info("Classification accuracy: {:.2f}%".format(
@@ -1502,6 +1566,7 @@ logger.info("Classification accuracy: {:.2f}%".format(
 
 
 # In[ ]:
+
 
 report = pd.DataFrame(
     dict(zip(
@@ -1524,6 +1589,7 @@ report
 
 # In[ ]:
 
+
 logger.info('Testing completed, exiting')
 sys.exit(0)
 
@@ -1531,6 +1597,7 @@ sys.exit(0)
 # ## Analysing results
 
 # In[ ]:
+
 
 def uniq_counts(l, sort_key=itemgetter(1), sort_reverse=True):
     try:
@@ -1567,6 +1634,7 @@ noise_incident = (None, [decode(a, m) for a, m in zip(noise_alerts, noise_masks)
 
 # In[ ]:
 
+
 logger.info('Counts of different noise alerts')
 uniq, counts = uniq_counts(
     pool(modify(
@@ -1579,6 +1647,7 @@ for i, (u, c) in enumerate(zip(uniq, counts)):
 
 # In[ ]:
 
+
 logger.info('Priority among noise alerts:')
 uniq, counts = uniq_counts(pool(modify(
             [noise_incident],
@@ -1589,6 +1658,7 @@ for u, c in zip(uniq, counts):
 
 
 # In[ ]:
+
 
 logger.info('Priority of all alerts:')
 all_alerts = pool(modify(
@@ -1605,6 +1675,7 @@ for u, c in zip(uniq, counts):
 
 
 # In[ ]:
+
 
 logger.info('Priority of all alerts by incident:')
 uniq, counts = uniq_counts(pool(modify(
@@ -1642,9 +1713,4 @@ fmt = '{:<11}' + '{:7.2f}%'*cnt_array.shape[1] + '\n'
 for i in np.arange(cnt_array.shape[0]):
     s += fmt.format(*['Incident '+str(i+1)]+list(100*cnt_array[i,:]/cnt_array.sum()))
 logger.info(s)
-
-
-# In[ ]:
-
-
 
