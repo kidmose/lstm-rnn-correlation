@@ -535,7 +535,7 @@ def alert_mask_iter(data, batch_size):
             yield inputs, mask
 
 for mbatch_size in [100, 300, 1000, 3000, 4316]:
-    if mbatch_size < data.shape[0]:
+    if mbatch_size > data.shape[0]:
         logger.warn(
             "Not testing mapping speed for batch size=%d (data only holds %d samples)." % \
             (mbatch_size, data.shape[0])
