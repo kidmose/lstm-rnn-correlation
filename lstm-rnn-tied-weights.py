@@ -540,6 +540,7 @@ for mbatch_size in [100, 300, 1000, 3000, 4316]:
             "Not testing mapping speed for batch size=%d (data only holds %d samples)." % \
             (mbatch_size, data.shape[0])
         )
+        continue
     for mbatch_alerts, mbatch_masks in alert_mask_iter(data, mbatch_size):
         start_mbatch = datetime.datetime.now()
         _ = alert_to_vector(mbatch_alerts, mbatch_masks)
