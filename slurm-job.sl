@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH --account=aaubotsensor_gpu
 #SBATCH --time=24:00:00
 #SBATCH --array=0-9
 #SBATCH --output="lstm-rnn-correlation/output/slurm-%A_%a.out"

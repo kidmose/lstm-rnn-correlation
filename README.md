@@ -35,7 +35,7 @@ etc). We encourage such an environment for your first installation.
 Furthermore we have used and encourage the use of `virtualenv`, for
 isolation and the ability to easily roll back.
 
-    virtualenv --system-site-packages -p python2.7 venv
+    virtualenv --system-site-packages -p python2.7 env
 
 Dependencies are installed with:
 
@@ -98,11 +98,22 @@ inconsistency between the data description on the homepage and the
 labels of the flows: `Friday-WorkingHours-Morning.pcap_ISCX.csv`
 contains flows labelled as botnet and timestamped from ~10:00 a.m. to
 ~1:00 p.m., while the description states the botnet was active from
-10:02 a.m. – 11:02 a.m..
+10:02 a.m. – 11:02 a.m.. See `clean-flows.ipynb` for details
 
  1. Run pcaps through snort, concatenate the log files.
- 2. Clean CSV with lablled flows. See `preprocessing/cic-ids-2017/clean-flows.ipynb`
- 3. Label alerts by matching to labelled flows. **TODO**.
+ 2. Label alerts according to incident descriptions
+    (`preprocessing/cic-ids-2017/incident_descriptions.csv`).
+    * A description consists of an label (incident), the attacker and
+      victim IP, and a time interval.
+    * Each alert gets the label from the description where it falls
+      within the time interval and at least one IP in the alert (src
+      or dst) matches one IP in the description, not considering the
+      routers internal and external IPs (This is to avoid effects of
+      NAT).
+    * All alerts not matching a description defaults to benign.
+ 3. Stratify such that no label occurs more than 200 times, and drop
+    *benign* to match the total size of the MCFP dataset.
+
 
 ## References ##
 
