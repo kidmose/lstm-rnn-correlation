@@ -517,6 +517,8 @@ assert (data['mask'].map(np.nonzero).map(np.max)+1 == data['alert'].map(len)).al
 # In[ ]:
 
 
+# test mapping speed
+
 def alert_mask_iter(data, batch_size):
     ii = 0 # minibatch counter
     assert len(data) >= batch_size,         "{} samples is not enough to produce a minibatch of {} samples"        .format(len(data), batch_size)
@@ -533,6 +535,11 @@ def alert_mask_iter(data, batch_size):
             yield inputs, mask
 
 for mbatch_size in [100, 300, 1000, 3000, 4316]:
+    if mbatch_size < data.shape[0]:
+        logger.warn(
+            "Not testing mapping speed for batch size=%d (data only holds %d samples)." % \
+            (mbatch_size, data.shape[0])
+        )
     for mbatch_alerts, mbatch_masks in alert_mask_iter(data, mbatch_size):
         start_mbatch = datetime.datetime.now()
         _ = alert_to_vector(mbatch_alerts, mbatch_masks)
