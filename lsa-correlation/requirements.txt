@@ -1,0 +1,6 @@
+jupyter
+notebook
+sklearn
+numpy>=1.12.1
+scipy
+pandas
