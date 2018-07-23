@@ -374,7 +374,7 @@ for cut in cuts:
                     raise ValueError(
                         'y dimension must match. ({} != {})'.format(
                             y.shape, y_pred.shape
-                        )
+                    ))
                 # END:DEBUG CODE
                 y_pred_inc[cut][i,j] = np.array([mapper[i,j][el] for el in y_pred[cut][i,j]]) # predict incident
             else:
@@ -398,7 +398,7 @@ def arf_score(y, y_pred):
     if not len(set(y_pred)):
         logger.critical('len(set(y_pred))={}'.format(len(set(y_pred))))
         logger.critical('set(y_pred))={}'.format(set(y_pred)))
-        logger.critical('y_pred={}'.format(y_pred)
+        logger.critical('y_pred={}'.format(y_pred))
     # END:DEBUG CODE
     return len(y) / len(set(y_pred))
 
