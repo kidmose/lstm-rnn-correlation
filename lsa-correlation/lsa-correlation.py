@@ -398,12 +398,6 @@ def false_alert_rate_clusters_score(y, y_pred):
     return (y[idx_clusters] == -1).mean()
 
 def arf_score(y, y_pred):
-    # START:DEBUG CODE
-    if not len(set(y_pred)):
-        logger.critical('len(set(y_pred))={}'.format(len(set(y_pred))))
-        logger.critical('set(y_pred))={}'.format(set(y_pred)))
-        logger.critical('y_pred={}'.format(y_pred))
-    # END:DEBUG CODE
     return len(y) / len(set(y_pred))
 
 def narf_score(y, y_pred):
