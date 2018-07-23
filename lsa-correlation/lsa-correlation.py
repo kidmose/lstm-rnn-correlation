@@ -258,8 +258,8 @@ def precompute_distance_matrix(X):
 
 logger.info('Getting alerts for clustering')
 clust_alerts = {
-    'train': (data[idx_train][list(range(100))].values, data[idx_train].incident.values),
-    'validation': (data[idx_val][list(range(100))].values, data[idx_val].incident.values), 
+    'train': (data[idx_train][list(range(SVD_COMPONENTS))].values, data[idx_train].incident.values),
+    'validation': (data[idx_val][list(range(SVD_COMPONENTS))].values, data[idx_val].incident.values),
 }
 
 logger.info("Precomputing clustering alert distances")
