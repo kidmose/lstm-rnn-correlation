@@ -369,13 +369,6 @@ for cut in cuts:
             elif cut == 'validation':
                 logger.info('Predicting for (eps, min_samples)=({:1.0e},{:>2d})'.format(eps, min_samples))
                 y_pred[cut][i,j] = dbscan_predict(cl_model[i][j], X[cut])
-                # START:DEBUG CODE
-                if not y[cut].shape == y_pred[cut][i,j].shape:
-                    raise ValueError(
-                        'y dimension must match. ({} != {})'.format(
-                            y.shape, y_pred.shape
-                    ))
-                # END:DEBUG CODE
                 y_pred_inc[cut][i,j] = np.array([mapper[i,j][el] for el in y_pred[cut][i,j]]) # predict incident
             else:
                 raise NotImplementedError('Unexpected value for cut:{}'.format(cut))
@@ -387,14 +380,10 @@ for cut in cuts:
 
 def false_alert_rate_outliers_score(y, y_pred):
     idx_outliers = y_pred == -1
-    if not idx_outliers.sum():
-        return float('nan')
     return (y[idx_outliers] == -1).mean()
 
 def false_alert_rate_clusters_score(y, y_pred):
     idx_clusters = y_pred != -1
-    if not idx_clusters.sum():
-        return float('nan')
     return (y[idx_clusters] == -1).mean()
 
 def arf_score(y, y_pred):
