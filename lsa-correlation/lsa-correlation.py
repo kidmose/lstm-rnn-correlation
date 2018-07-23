@@ -51,7 +51,7 @@ try: # If X is not available select backend not requiring X
 except KeyError:
     matplotlib.use('Agg')
 try: # If ipython, do inline
-    get_ipython().magic(u'matplotlib inline')
+    get_ipython().run_line_magic('matplotlib', 'inline')
 except NameError:
     pass
 import matplotlib.pyplot as plt
@@ -116,6 +116,7 @@ env['CSVIN'] = os.environ.get('CSVIN', None)
 if env['CSVIN'] is None:
     logger.critical("Cannot run without a CSV input")
     sys.exit(-1)
+env['RAND_SEED'] = int(os.environ.get('RAND_SEED', time.time())) # Current unix time if not specified
 env['VAL_CUT'] = int(os.environ.get('VAL_CUT', -1))
 if not (0 <= env['VAL_CUT']) and (env['VAL_CUT'] <= 9):
     logger.critical("Invalid cross validation cut: {}".format(env['VAL_CUT']))
@@ -134,7 +135,7 @@ with open(out_prefix + 'env.json', 'w') as f:
 # In[ ]:
 
 
-seed = 1532071300
+seed = env['RAND_SEED']
 def rndseed():
     global seed
     seed += 1
@@ -419,11 +420,11 @@ def cm_inc_clust(y, y_pred):
         columns=sorted(set.union(set(y), set(y_pred))),
     )
     # drop dummy row for non-existing incident IDs
-    assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).as_matrix().all(), "Non-empty row for invalid incident id"
+    assert (cm_inc_clust.drop(list(set(y)), axis=0) == 0).values.all(), "Non-empty row for invalid incident id"
     cm_inc_clust = cm_inc_clust.loc[sorted(list(set(y)))]
 
     # drop dummy collumns for non-existing cluster IDs
-    assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).as_matrix().all(), "Non-empty collumn for invalid cluster id"
+    assert (cm_inc_clust.drop(list(set(y_pred)), axis=1) == 0).values.all(), "Non-empty collumn for invalid cluster id"
     cm_inc_clust = cm_inc_clust[sorted(list(set(y_pred)))]
 
     cm_inc_clust.rename(index={-1: 'benign'}, inplace=True)
