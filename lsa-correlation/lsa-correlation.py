@@ -387,10 +387,14 @@ for cut in cuts:
 
 def false_alert_rate_outliers_score(y, y_pred):
     idx_outliers = y_pred == -1
+    if not idx_outliers.sum():
+        return float('nan')
     return (y[idx_outliers] == -1).mean()
 
 def false_alert_rate_clusters_score(y, y_pred):
     idx_clusters = y_pred != -1
+    if not idx_outliers.sum():
+        return float('nan')
     return (y[idx_clusters] == -1).mean()
 
 def arf_score(y, y_pred):
