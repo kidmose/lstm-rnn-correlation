@@ -25,7 +25,7 @@ echo "Loading modules" && \
     module load cuda/7.5  && \
     module load python/2.7.11 && \
     echo "Loaded modules" || \
-    (echo "Failed to load modules"; exit -1)
+    { echo "Failed to load modules"; exit -1; }
 
 echo "Creating node-local git repository from $HOME" && \
     cd $LOCALSCRATCH && \
@@ -33,21 +33,21 @@ echo "Creating node-local git repository from $HOME" && \
     git clone $HOME/lstm-rnn-correlation && \
     cd $LOCALSCRATCH/lstm-rnn-correlation && \
     echo "Created node-local repository ($PWD;$(git rev-parse --abbrev-ref HEAD);$(git describe))" || \
-    (echo "Failed to create node-local git repository"; exit -2)
+    { echo "Failed to create node-local git repository"; exit -2; }
 
 echo "Creating symlinks to data, output and env folders" && \
     ln -s $HOME/lstm-rnn-correlation/output/ output && \
     ln -s $HOME/lstm-rnn-correlation/data/ data && \
     ln -s $HOME/lstm-rnn-correlation/env/ env && \
     echo "Created symlinks" || \
-    (echo "Failed to create symlinks"; exit -3)
+    { echo "Failed to create symlinks"; exit -3; }
 
 echo "Activating virtual environment" && \
     source env/bin/activate && \
     echo "Activated virtual environment (python version: $(python --version 2>&1) from: $(which python))" || \
-    (echo "Failed to activate virtual environment"; exit -4)
+    { echo "Failed to activate virtual environment"; exit -4; }
 
 echo "Starting workload" && \
     THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
     echo "Workload completed sucessfully" || \
-    (echo "Workload failed"; exit -5)
+    { echo "Workload failed"; exit -5; }
