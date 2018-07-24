@@ -1351,6 +1351,7 @@ for cut in cuts:
 
 
 import pickle
+assert False, "Don't use pickle! It's very unstable. Consider e.g. HDF5 with h5py module."
 with open(out_prefix + 'metrics.pickle', 'w') as f:
     pickle.dump(m, f)
 
