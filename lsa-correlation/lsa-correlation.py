@@ -44,6 +44,7 @@ from sklearn.preprocessing import Normalizer
 import pandas as pd
 import scipy as sp
 import numpy as np
+import h5py
 
 import matplotlib
 try: # If X is not available select backend not requiring X
@@ -201,8 +202,8 @@ logger.info(
 )
 
 # SVD
-COMPONENTS = 100
-svd = TruncatedSVD(COMPONENTS)
+SVD_COMPONENTS = 100
+svd = TruncatedSVD(SVD_COMPONENTS)
 
 # lsa
 lsa = make_pipeline(
@@ -216,7 +217,7 @@ _ = lsa.fit(data[idx_train].alert)
 
 logger.info(
     "Variance explained by SVD using %d components: %.3f %%" %
-    (COMPONENTS, svd.explained_variance_ratio_.sum() * 100. )
+    (SVD_COMPONENTS, svd.explained_variance_ratio_.sum() * 100. )
 )
 
 
@@ -515,6 +516,36 @@ for cut in cuts:
                 )
             )
         
+
+
+# In[ ]:
+
+
+# save metrics to hdf5
+import h5py
+
+with h5py.File(out_prefix + 'metrics.h5', 'w'): # truncate
+    pass
+
+def traverse_metrics(m, hdf5file, path=''):
+    logger.debug('Saving %s' % (path))
+    if isinstance(m, dict):
+        for k in m:
+            traverse_metrics(m[k], hdf5file, path='%s/%s' % (path, k,))
+        return
+    elif isinstance(m, np.ndarray) and m.dtype == np.dtype('O'):
+        for x in range(0, m.shape[0]):
+            for y in range(0, m.shape[1]):
+                traverse_metrics(m[x,y], hdf5file, path='%s/index_%d_%d' % (path, x, y))
+        return
+    elif isinstance(m, pd.DataFrame):
+        m.to_hdf(hdf5file, path)
+    else:
+        with h5py.File(hdf5file, 'a') as hf:
+            hf.create_dataset(path,  data=m)
+    logger.debug('Saved %s' % (path, ))
+
+traverse_metrics(m, out_prefix + 'metrics.h5')
 
 
 # ## Plotting
