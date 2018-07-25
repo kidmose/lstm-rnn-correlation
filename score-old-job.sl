@@ -54,6 +54,6 @@ echo "Looking for old job" && \
     { echo "Not found: $OLD_JOB"; exit -5; }
 
 echo "Starting workload" && \
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID OLD_JOB=$SLURM_ARRAY_TASK_ID NUM_EPOCHS=0 python lstm-rnn-tied-weights.py && \
+    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID OLD_JOB=$OLD_JOB NUM_EPOCHS=0 python lstm-rnn-tied-weights.py && \
     echo "Workload completed sucessfully" || \
     { echo "Workload failed"; exit -6; }
