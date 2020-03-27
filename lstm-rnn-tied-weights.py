@@ -85,6 +85,7 @@ import scipy as sp
 import theano
 import theano.tensor as T
 import pandas as pd
+import h5py
 
 import matplotlib
 try: # If X is not available select backend not requiring X
@@ -1064,16 +1065,7 @@ def _get_alert_batch(data, max_samples=0):
     return alerts, masks, incidents
 
 def precompute_distance_matrix(X):
-    """
-    precomputing takes 20 sec/500 samples on js3, OMP_NUM_THREADS=16
-    precomputing takes 9 min/2632 samples on js3, OMP_NUM_THREADS=16
-    """
-    with Timer('Precomputing distances for {} samples'.format(len(X))):
-        precomp_dist = np.zeros(shape=(len(X), len(X)))
-        for i in range(len(X)):
-            for j in range(len(X)):
-                precomp_dist[i, j] = sp.spatial.distance.cosine(X[i], X[j])
-    return precomp_dist
+    return sp.spatial.distance.cdist(X, X, metric='cosine')
 
 
 # In[ ]:
@@ -1350,9 +1342,31 @@ for cut in cuts:
 # In[ ]:
 
 
-import pickle
-with open(out_prefix + 'metrics.pickle', 'w') as f:
-    pickle.dump(m, f)
+# save metrics to hdf5
+import h5py
+
+with h5py.File(out_prefix + 'metrics.h5', 'w'): # truncate
+    pass
+
+def traverse_metrics(m, hdf5file, path=''):
+    logger.debug('Saving %s' % (path))
+    if isinstance(m, dict):
+        for k in m:
+            traverse_metrics(m[k], hdf5file, path='%s/%s' % (path, k,))
+        return
+    elif isinstance(m, np.ndarray) and m.dtype == np.dtype('O'):
+        for x in range(0, m.shape[0]):
+            for y in range(0, m.shape[1]):
+                traverse_metrics(m[x,y], hdf5file, path='%s/index_%d_%d' % (path, x, y))
+        return
+    elif isinstance(m, pd.DataFrame):
+        m.to_hdf(hdf5file, path)
+    else:
+        with h5py.File(hdf5file, 'a') as hf:
+            hf.create_dataset(path,  data=m)
+    logger.debug('Saved %s' % (path, ))
+
+traverse_metrics(m, out_prefix + 'metrics.h5')
 
 
 # ### Plotting

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=4:00:00
 #SBATCH --array=0-9
 #SBATCH --output="lstm-rnn-correlation/output/slurm-%A_%a.out"
 
@@ -47,7 +47,13 @@ echo "Activating virtual environment" && \
     echo "Activated virtual environment (python version: $(python --version 2>&1) from: $(which python))" || \
     { echo "Failed to activate virtual environment"; exit -4; }
 
+echo "Looking for old job" && \
+    OLD_JOB=$(bash -c "echo output/*slurm-${OLD_SLURM_ID}_$SLURM_ARRAY_TASK_ID") && \
+    [[ -e "$OLD_JOB" ]] && \
+    echo "Found: OLD_JOB=$OLD_JOB" || \
+    { echo "Not found: $OLD_JOB"; exit -5; }
+
 echo "Starting workload" && \
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
+    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID OLD_JOB=$OLD_JOB NUM_EPOCHS=0 python lstm-rnn-tied-weights.py && \
     echo "Workload completed sucessfully" || \
-    { echo "Workload failed"; exit -5; }
+    { echo "Workload failed"; exit -6; }

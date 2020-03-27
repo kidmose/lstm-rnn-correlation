@@ -20,3 +20,5 @@ sklearn==0.0
 Theano==0.8.0
 Lasagne==0.1
 psutil==5.0.0
+h5py
+tables

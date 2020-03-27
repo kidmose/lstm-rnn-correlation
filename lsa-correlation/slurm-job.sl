@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=2:00:00
 #SBATCH --array=0-9
 #SBATCH --output="lstm-rnn-correlation/output/slurm-%A_%a.out"
 
@@ -22,8 +22,7 @@
 # <http://www.gnu.org/licenses/>.
 
 echo "Loading modules" && \
-    module load cuda/7.5  && \
-    module load python/2.7.11 && \
+    module load python/3.6.3 && \
     echo "Loaded modules" || \
     { echo "Failed to load modules"; exit -1; }
 
@@ -38,7 +37,7 @@ echo "Creating node-local git repository from $HOME" && \
 echo "Creating symlinks to data, output and env folders" && \
     ln -s $HOME/lstm-rnn-correlation/output/ output && \
     ln -s $HOME/lstm-rnn-correlation/data/ data && \
-    ln -s $HOME/lstm-rnn-correlation/env/ env && \
+    ln -s $HOME/lstm-rnn-correlation/lsa-correlation/env/ env && \
     echo "Created symlinks" || \
     { echo "Failed to create symlinks"; exit -3; }
 
@@ -48,6 +47,6 @@ echo "Activating virtual environment" && \
     { echo "Failed to activate virtual environment"; exit -4; }
 
 echo "Starting workload" && \
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID python lstm-rnn-tied-weights.py && \
+    VAL_CUT=$SLURM_ARRAY_TASK_ID RAND_SEED=$SLURM_ARRAY_TASK_ID python lsa-correlation/lsa-correlation.py && \
     echo "Workload completed sucessfully" || \
     { echo "Workload failed"; exit -5; }
